@@ -441,6 +441,9 @@ export default function Vendedores() {
                           <Link className="vend-btn-mini" href={`/qr/${v.id}`}>
                             Ver / imprimir QR
                           </Link>
+                          <Link className="vend-btn-mini" href={`/ficha/${v.id}`}>
+                            Ver ficha completa
+                          </Link>
                           <button className="vend-btn-mini secundario" onClick={() => setEditandoId(v.id)}>
                             Editar
                           </button>
