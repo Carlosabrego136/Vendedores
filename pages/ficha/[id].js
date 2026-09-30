@@ -22,6 +22,16 @@ function soloFecha(valor) {
   return String(valor).slice(0, 10);
 }
 
+// pg regresa las columnas DATE como objetos Date de JS (no como texto). Para
+// mandarlas como prop de getServerSideProps hay que convertirlas nosotros —
+// String(unaFecha) da algo como "Wed Sep 30 2026 ..." (no sirve), por eso
+// usamos toISOString(), que sí da "2026-09-30T00:00:00.000Z".
+function serializarFecha(valor) {
+  if (!valor) return null;
+  if (valor instanceof Date) return valor.toISOString().slice(0, 10);
+  return String(valor).slice(0, 10);
+}
+
 function formatoFecha(valor) {
   const corta = soloFecha(valor);
   if (!corta) return '—';
@@ -50,9 +60,9 @@ export async function getServerSideProps({ params }) {
         telefono: v.telefono,
         qr_codigo: v.qr_codigo,
         categoria_nombre: v.categoria_nombre || null,
-        fecha_nacimiento: v.fecha_nacimiento ? String(v.fecha_nacimiento).slice(0, 10) : null,
-        fecha_ingreso: v.fecha_ingreso ? String(v.fecha_ingreso).slice(0, 10) : null,
-        fecha_vencimiento: v.fecha_vencimiento ? String(v.fecha_vencimiento).slice(0, 10) : null,
+        fecha_nacimiento: serializarFecha(v.fecha_nacimiento),
+        fecha_ingreso: serializarFecha(v.fecha_ingreso),
+        fecha_vencimiento: serializarFecha(v.fecha_vencimiento),
         facebook: v.facebook,
         referencia1_nombre: v.referencia1_nombre,
         referencia1_telefono: v.referencia1_telefono,
