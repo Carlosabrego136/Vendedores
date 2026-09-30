@@ -213,6 +213,8 @@ export default function Vendedores() {
   const [editandoId, setEditandoId] = useState(null);
   const [porVencer, setPorVencer] = useState([]);
   const [mostrarReporte, setMostrarReporte] = useState(false);
+  const [totales, setTotales] = useState(null);
+  const [avisoCopiado, setAvisoCopiado] = useState('');
 
   async function cargar() {
     setCargando(true);
@@ -227,9 +229,15 @@ export default function Vendedores() {
     setPorVencer(await res.json());
   }
 
+  async function cargarTotales() {
+    const res = await fetch('/api/vendedores/totales');
+    setTotales(await res.json());
+  }
+
   useEffect(() => {
     cargar();
     cargarPorVencer();
+    cargarTotales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mostrarInactivos]);
 
@@ -246,6 +254,7 @@ export default function Vendedores() {
     setMostrarAlta(false);
     cargar();
     cargarPorVencer();
+    cargarTotales();
   }
 
   async function guardarEdicion(id, datos) {
@@ -257,6 +266,7 @@ export default function Vendedores() {
     setEditandoId(null);
     cargar();
     cargarPorVencer();
+    cargarTotales();
   }
 
   async function alternarActivo(v) {
@@ -268,6 +278,7 @@ export default function Vendedores() {
       body: JSON.stringify({ activo: !v.activo }),
     });
     cargar();
+    cargarTotales();
   }
 
   async function eliminar(v) {
@@ -276,10 +287,78 @@ export default function Vendedores() {
     if (res.ok) {
       cargar();
       cargarPorVencer();
+      cargarTotales();
       return;
     }
     const data = await res.json().catch(() => ({}));
     alert(data.error || 'No se pudo eliminar al vendedor.');
+  }
+
+  // Copia la lista de vendedores que se está viendo en este momento (ya
+  // filtrada por el buscador) como texto separado por tabulaciones, para que
+  // al pegarlo en Excel cada dato caiga en su propia columna.
+  async function copiarParaExcel() {
+    const encabezados = [
+      'Nombre',
+      'Teléfono',
+      'Estatus',
+      'Fecha de nacimiento',
+      'Fecha de ingreso',
+      'Fecha de vencimiento',
+      'Facebook',
+      'Referencia 1',
+      'Tel. Referencia 1',
+      'Referencia 2',
+      'Tel. Referencia 2',
+    ];
+
+    const filas = vendedoresFiltrados.map((v) => [
+      v.nombre || '',
+      v.telefono || '',
+      labelEstatus(v.estatus),
+      formatoFecha(v.fecha_nacimiento),
+      formatoFecha(v.fecha_ingreso),
+      formatoFecha(v.fecha_vencimiento),
+      v.facebook || '',
+      v.referencia1_nombre || '',
+      v.referencia1_telefono || '',
+      v.referencia2_nombre || '',
+      v.referencia2_telefono || '',
+    ]);
+
+    const texto = [encabezados, ...filas].map((fila) => fila.join('\t')).join('\n');
+
+    let copiado = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(texto);
+        copiado = true;
+      }
+    } catch (err) {
+      copiado = false;
+    }
+    if (!copiado) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = texto;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        copiado = true;
+      } catch (err) {
+        copiado = false;
+      }
+    }
+
+    setAvisoCopiado(
+      copiado
+        ? `Se copiaron ${filas.length} vendedor${filas.length === 1 ? '' : 'es'}. Ya puedes pegarlo en Excel (Ctrl/Cmd + V).`
+        : 'No se pudo copiar automáticamente. Intenta de nuevo.'
+    );
+    setTimeout(() => setAvisoCopiado(''), 6000);
   }
 
   const vendedoresFiltrados = useMemo(() => {
@@ -314,7 +393,6 @@ export default function Vendedores() {
         <header className="vend-header">
           <div className="vend-brand">
             <img src="/logo.jpg" alt="ENVIOS AYORA" />
-            <span className="vend-brand-tag">ENVIOS AYORA</span>
           </div>
           <h1>Vendedores</h1>
           <p className="vend-subtitulo">Agrega, edita y genera los códigos QR de tus vendedores.</p>
@@ -370,8 +448,32 @@ export default function Vendedores() {
             )}
           </section>
 
+          {totales && (
+            <section className="vend-panel vend-panel-totales">
+              <h2>Total de comerciantes registrados</h2>
+              <div className="vend-totales-fila">
+                {ESTATUS_OPCIONES.map((op) => (
+                  <div key={op.valor} className="vend-total-pill" style={{ borderColor: op.color, color: op.color }}>
+                    <span className="vend-total-numero">{totales[op.valor] ?? 0}</span>
+                    <span className="vend-total-label">{op.label}</span>
+                  </div>
+                ))}
+                <div className="vend-total-pill vend-total-pill-general">
+                  <span className="vend-total-numero">{totales.total ?? 0}</span>
+                  <span className="vend-total-label">Total</span>
+                </div>
+              </div>
+            </section>
+          )}
+
           <section className="vend-panel">
-            <h2>Buscar / lista de vendedores</h2>
+            <div className="vend-panel-titulo-fila">
+              <h2>Buscar / lista de vendedores</h2>
+              <button className="vend-btn-mini secundario" onClick={copiarParaExcel}>
+                📋 Copiar para Excel
+              </button>
+            </div>
+            {avisoCopiado && <p className="vend-aviso-copiado">{avisoCopiado}</p>}
 
             <input
               className="vend-buscar"
@@ -576,6 +678,44 @@ export default function Vendedores() {
         }
         .vend-panel-reporte {
           border-color: rgba(245, 165, 36, 0.5);
+        }
+        .vend-panel-totales h2 {
+          margin-bottom: 12px;
+        }
+        .vend-totales-fila {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .vend-total-pill {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          padding: 10px 16px;
+          border-radius: 12px;
+          border: 1.5px solid;
+          min-width: 88px;
+        }
+        .vend-total-pill-general {
+          border-color: rgba(199, 205, 216, 0.5);
+          color: #dfe3ea;
+        }
+        .vend-total-numero {
+          font-size: 22px;
+          font-weight: 800;
+        }
+        .vend-total-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: #c7cdd8;
+          text-align: center;
+        }
+        .vend-aviso-copiado {
+          margin: 8px 0 4px;
+          font-size: 13px;
+          color: #7ee2a0;
+          font-weight: 600;
         }
         .vend-reporte-toggle {
           width: 100%;
