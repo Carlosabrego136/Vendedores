@@ -10,9 +10,15 @@ const ESTATUS_LABEL = {
   vetado: 'Vetado',
 };
 
+// La fecha "fecha" del renglón de asistencia viene solo con "YYYY-MM-DD"
+// (no es una columna DATE con hora), pero fecha_vencimiento del vendedor sí
+// puede venir con hora/zona pegada — nos quedamos solo con los primeros 10
+// caracteres para que ambas funcionen igual.
 function formatoFecha(fechaIso) {
   if (!fechaIso) return '';
-  const d = new Date(`${fechaIso}T00:00:00`);
+  const corta = String(fechaIso).slice(0, 10);
+  const d = new Date(`${corta}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 

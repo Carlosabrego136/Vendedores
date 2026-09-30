@@ -23,17 +23,30 @@ function labelEstatus(valor) {
   return (ESTATUS_OPCIONES.find((o) => o.valor === valor) || ESTATUS_OPCIONES[0]).label;
 }
 
+// Postgres devuelve las columnas DATE como objetos Date completos (con hora
+// y zona), y al pasar por JSON quedan como "2026-10-02T00:00:00.000Z". Esta
+// función se queda solo con el "YYYY-MM-DD", sin importar si ya venía así
+// de corto o con toda la hora pegada.
+function soloFecha(valor) {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+}
+
 function formatoFecha(fechaIso) {
-  if (!fechaIso) return '—';
-  const d = new Date(`${fechaIso}T00:00:00`);
+  const corta = soloFecha(fechaIso);
+  if (!corta) return '—';
+  const d = new Date(`${corta}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function diasParaVencer(fechaVencimiento) {
-  if (!fechaVencimiento) return null;
+  const corta = soloFecha(fechaVencimiento);
+  if (!corta) return null;
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const venc = new Date(`${fechaVencimiento}T00:00:00`);
+  const venc = new Date(`${corta}T00:00:00`);
+  if (Number.isNaN(venc.getTime())) return null;
   return Math.round((venc - hoy) / (1000 * 60 * 60 * 24));
 }
 
@@ -278,7 +291,7 @@ export default function Vendedores() {
   const porVencerAgrupado = useMemo(() => {
     const grupos = {};
     porVencer.forEach((v) => {
-      const d = new Date(`${v.fecha_vencimiento}T00:00:00`);
+      const d = new Date(`${soloFecha(v.fecha_vencimiento)}T00:00:00`);
       const clave = d.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
       if (!grupos[clave]) grupos[clave] = [];
       grupos[clave].push(v);
