@@ -104,7 +104,6 @@ export default function FichaVendedor({ vendedor }) {
         <div className="ficha-encabezado">
           <img src="/logo.jpg" alt="ENVIOS AYORA" className="ficha-logo" />
           <div>
-            <p className="ficha-marca">ENVIOS AYORA — Ficha de vendedor</p>
             <h1 className="ficha-nombre">{vendedor.nombre}</h1>
           </div>
           <span className="ficha-estatus" style={{ background: `${colorEstatus}1a`, color: colorEstatus, border: `1.5px solid ${colorEstatus}` }}>
