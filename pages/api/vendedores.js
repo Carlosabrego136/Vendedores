@@ -25,6 +25,7 @@ export default async function handler(req, res) {
               v.fecha_ingreso, v.fecha_vencimiento, v.facebook,
               v.referencia1_nombre, v.referencia1_telefono,
               v.referencia2_nombre, v.referencia2_telefono,
+              v.numero_registro,
               (v.ine_foto IS NOT NULL) AS tiene_ine
        FROM vendedores v
        LEFT JOIN categorias c ON c.id = v.categoria_id
@@ -57,14 +58,21 @@ export default async function handler(req, res) {
     const vencimiento = calcularVencimiento(ingreso);
     const estatusFinal = estatus || 'activo';
 
+    // El número de registro se asigna solo, de forma consecutiva (1, 2, 3...),
+    // tomando el máximo ya usado + 1 — así nunca hay que capturarlo a mano.
     const { rows } = await query(
-      `INSERT INTO vendedores
+      `WITH siguiente AS (
+         SELECT COALESCE(MAX(numero_registro), 0) + 1 AS n FROM vendedores
+       )
+       INSERT INTO vendedores
          (nombre, categoria_id, qr_codigo, telefono, fecha_nacimiento,
           fecha_ingreso, fecha_vencimiento, facebook,
           referencia1_nombre, referencia1_telefono,
-          referencia2_nombre, referencia2_telefono, ine_foto, estatus, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       RETURNING id, nombre, qr_codigo, estatus, fecha_ingreso, fecha_vencimiento`,
+          referencia2_nombre, referencia2_telefono, ine_foto, estatus, activo,
+          numero_registro)
+       SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, siguiente.n
+       FROM siguiente
+       RETURNING id, nombre, qr_codigo, estatus, fecha_ingreso, fecha_vencimiento, numero_registro`,
       [
         nombre,
         categoria_id || null,

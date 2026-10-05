@@ -21,11 +21,19 @@ export async function getServerSideProps({ params }) {
       id,
       nombre: vendedor.nombre,
       qrCodigo: vendedor.qr_codigo,
+      numeroRegistro: vendedor.numero_registro ?? null,
     },
   };
 }
 
-export default function VerQr({ id, nombre, qrCodigo }) {
+// Número de registro con 4 dígitos (0001, 0002, ...), como lo pidió la clienta.
+function formatoNumeroRegistro(n) {
+  if (n === null || n === undefined) return null;
+  return String(n).padStart(4, '0');
+}
+
+export default function VerQr({ id, nombre, qrCodigo, numeroRegistro }) {
+  const numeroFormateado = formatoNumeroRegistro(numeroRegistro);
   return (
     <div className="qr-pagina">
       <Head>
@@ -45,6 +53,7 @@ export default function VerQr({ id, nombre, qrCodigo }) {
         <img src="/logo.jpg" alt="ENVIOS AYORA" className="qr-logo" />
         <p className="qr-etiqueta">Vendedor</p>
         <h1 className="qr-nombre">{nombre}</h1>
+        {numeroFormateado && <p className="qr-numero-registro">No. de registro: {numeroFormateado}</p>}
         <img src={`/api/qr/${id}`} alt={`Código QR de ${nombre}`} className="qr-imagen" />
         <p className="qr-codigo">{qrCodigo}</p>
       </div>
@@ -111,8 +120,15 @@ export default function VerQr({ id, nombre, qrCodigo }) {
         .qr-nombre {
           font-size: 24px;
           font-weight: 800;
-          margin: 0 0 20px;
+          margin: 0 0 4px;
           color: #101a30;
+        }
+        .qr-numero-registro {
+          font-size: 13.5px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          color: #33455f;
+          margin: 0 0 20px;
         }
         .qr-imagen {
           width: 100%;

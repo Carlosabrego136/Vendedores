@@ -71,9 +71,16 @@ export async function getServerSideProps({ params }) {
         ine_foto: v.ine_foto,
         estatus: v.estatus,
         activo: v.activo,
+        numero_registro: v.numero_registro ?? null,
       },
     },
   };
+}
+
+// Número de registro con 4 dígitos (0001, 0002, ...), como lo pidió la clienta.
+function formatoNumeroRegistro(n) {
+  if (n === null || n === undefined) return null;
+  return String(n).padStart(4, '0');
 }
 
 export default function FichaVendedor({ vendedor }) {
@@ -105,6 +112,9 @@ export default function FichaVendedor({ vendedor }) {
           <img src="/logo.jpg" alt="ENVIOS AYORA" className="ficha-logo" />
           <div>
             <h1 className="ficha-nombre">{vendedor.nombre}</h1>
+            {formatoNumeroRegistro(vendedor.numero_registro) && (
+              <p className="ficha-numero-registro">No. de registro: {formatoNumeroRegistro(vendedor.numero_registro)}</p>
+            )}
           </div>
           <span className="ficha-estatus" style={{ background: `${colorEstatus}1a`, color: colorEstatus, border: `1.5px solid ${colorEstatus}` }}>
             {labelEstatusTxt}
@@ -234,6 +244,13 @@ export default function FichaVendedor({ vendedor }) {
           font-size: 24px;
           font-weight: 800;
           color: #101a30;
+        }
+        .ficha-numero-registro {
+          margin: 4px 0 0;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          color: #6b7280;
         }
         .ficha-estatus {
           margin-left: auto;

@@ -40,6 +40,12 @@ function formatoFecha(fechaIso) {
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// Número de registro con 4 dígitos (0001, 0002, ...), como lo pidió la clienta.
+function formatoNumeroRegistro(n) {
+  if (n === null || n === undefined) return null;
+  return String(n).padStart(4, '0');
+}
+
 function diasParaVencer(fechaVencimiento) {
   const corta = soloFecha(fechaVencimiento);
   if (!corta) return null;
@@ -299,6 +305,7 @@ export default function Vendedores() {
   // al pegarlo en Excel cada dato caiga en su propia columna.
   async function copiarParaExcel() {
     const encabezados = [
+      'No. registro',
       'Nombre',
       'Teléfono',
       'Estatus',
@@ -313,6 +320,7 @@ export default function Vendedores() {
     ];
 
     const filas = vendedoresFiltrados.map((v) => [
+      formatoNumeroRegistro(v.numero_registro) || '',
       v.nombre || '',
       v.telefono || '',
       labelEstatus(v.estatus),
@@ -505,7 +513,12 @@ export default function Vendedores() {
                   return (
                     <div key={v.id} className={`vend-tarjeta ${v.activo ? '' : 'inactivo'}`}>
                       <div className="vend-tarjeta-top">
-                        <span className="vend-nombre">{v.nombre}</span>
+                        <span className="vend-nombre">
+                          {formatoNumeroRegistro(v.numero_registro) && (
+                            <span className="vend-numero-registro">{formatoNumeroRegistro(v.numero_registro)}</span>
+                          )}
+                          {v.nombre}
+                        </span>
                         <div className="vend-badges">
                           <span
                             className="vend-badge"
@@ -896,6 +909,19 @@ export default function Vendedores() {
           font-size: 16px;
           font-weight: 700;
           color: #fff;
+        }
+        .vend-numero-registro {
+          display: inline-block;
+          font-size: 11.5px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          color: #9aa4b5;
+          background: rgba(199, 205, 216, 0.12);
+          border: 1px solid rgba(199, 205, 216, 0.3);
+          border-radius: 6px;
+          padding: 2px 7px;
+          margin-right: 8px;
+          vertical-align: middle;
         }
         .vend-badges {
           display: flex;
