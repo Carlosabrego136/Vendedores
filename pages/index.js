@@ -404,9 +404,14 @@ export default function Vendedores() {
           </div>
           <h1>Vendedores</h1>
           <p className="vend-subtitulo">Agrega, edita y genera los códigos QR de tus vendedores.</p>
-          <Link href="/asistencia" className="vend-btn vend-btn-asistencia">
-            📋 Pase de lista (asistencia)
-          </Link>
+          <div className="vend-header-acciones">
+            <Link href="/asistencia" className="vend-btn vend-btn-asistencia">
+              📋 Pase de lista (asistencia)
+            </Link>
+            <Link href="/imprimir-qr" className="vend-btn vend-btn-asistencia">
+              🖨 Imprimir varios QR
+            </Link>
+          </div>
         </header>
 
         <main className="vend-main">
@@ -651,8 +656,14 @@ export default function Vendedores() {
           font-size: 14.5px;
           max-width: 480px;
         }
-        .vend-btn-asistencia {
+        .vend-header-acciones {
           margin-top: 10px;
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+        .vend-btn-asistencia {
           text-decoration: none;
           display: inline-block;
         }

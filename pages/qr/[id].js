@@ -19,9 +19,12 @@ export async function getServerSideProps({ params }) {
   return {
     props: {
       id,
-      nombre: vendedor.nombre,
       qrCodigo: vendedor.qr_codigo,
       numeroRegistro: vendedor.numero_registro ?? null,
+      // En esta tarjeta (la que se imprime para la credencial) se muestra el
+      // nombre de Facebook del vendedor si lo tiene capturado; si no, se usa
+      // su nombre real. Así lo pidió la clienta.
+      nombreMostrado: vendedor.facebook && vendedor.facebook.trim() ? vendedor.facebook.trim() : vendedor.nombre,
     },
   };
 }
@@ -32,12 +35,12 @@ function formatoNumeroRegistro(n) {
   return String(n).padStart(4, '0');
 }
 
-export default function VerQr({ id, nombre, qrCodigo, numeroRegistro }) {
+export default function VerQr({ id, nombreMostrado, qrCodigo, numeroRegistro }) {
   const numeroFormateado = formatoNumeroRegistro(numeroRegistro);
   return (
     <div className="qr-pagina">
       <Head>
-        <title>QR de {nombre} — ENVIOS AYORA</title>
+        <title>QR de {nombreMostrado} — ENVIOS AYORA</title>
       </Head>
 
       <div className="qr-barra no-imprimir">
@@ -52,9 +55,9 @@ export default function VerQr({ id, nombre, qrCodigo, numeroRegistro }) {
       <div className="qr-tarjeta">
         <img src="/logo.jpg" alt="ENVIOS AYORA" className="qr-logo" />
         <p className="qr-etiqueta">Vendedor</p>
-        <h1 className="qr-nombre">{nombre}</h1>
+        <h1 className="qr-nombre">{nombreMostrado}</h1>
         {numeroFormateado && <p className="qr-numero-registro">No. de registro: {numeroFormateado}</p>}
-        <img src={`/api/qr/${id}`} alt={`Código QR de ${nombre}`} className="qr-imagen" />
+        <img src={`/api/qr/${id}`} alt={`Código QR de ${nombreMostrado}`} className="qr-imagen" />
         <p className="qr-codigo">{qrCodigo}</p>
       </div>
 
@@ -148,9 +151,47 @@ export default function VerQr({ id, nombre, qrCodigo, numeroRegistro }) {
           }
           .qr-pagina {
             padding: 0;
+            align-items: flex-start;
           }
+          /* Tamaño credencial / tarjeta de banco (estándar CR80: 85.6mm x
+             54mm), tal como lo pidió la clienta, para pegarla atrás de la
+             credencial del vendedor. */
           .qr-tarjeta {
             border: none;
+            width: 85.6mm;
+            max-width: 85.6mm;
+            height: 54mm;
+            padding: 3mm 4mm;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+          }
+          .qr-logo {
+            height: 9mm;
+            margin-bottom: 1mm;
+          }
+          .qr-etiqueta {
+            font-size: 6.5px;
+            margin: 0;
+          }
+          .qr-nombre {
+            font-size: 10px;
+            margin: 0;
+            line-height: 1.15;
+          }
+          .qr-numero-registro {
+            font-size: 7px;
+            margin: 0 0 1mm;
+          }
+          .qr-imagen {
+            width: 24mm;
+            max-width: 24mm;
+            margin: 0 auto;
+          }
+          .qr-codigo {
+            font-size: 6px;
+            margin-top: 1mm;
           }
         }
       `}</style>
