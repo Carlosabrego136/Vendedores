@@ -45,6 +45,12 @@ export default async function handler(req, res) {
     // nuevo allá.
     const activoDesdeEstatus = estatus ? estatus === 'activo' : null;
 
+    // El formulario manda categoria_id como cadena vacía cuando el vendedor
+    // no tiene categoría (en vez de no mandar el campo), así que se trata
+    // igual que null — si no, Postgres truena al intentar convertir "" a
+    // uuid.
+    const categoriaIdParam = categoria_id === null || categoria_id === '' ? '__null__' : categoria_id ?? null;
+
     const { rows } = await query(
       `UPDATE vendedores
        SET nombre = COALESCE($1, nombre),
@@ -66,7 +72,7 @@ export default async function handler(req, res) {
        RETURNING id, nombre, qr_codigo, estatus, activo, fecha_ingreso, fecha_vencimiento`,
       [
         nombre ?? null,
-        categoria_id === null ? '__null__' : categoria_id ?? null,
+        categoriaIdParam,
         activo ?? null,
         activoDesdeEstatus,
         telefono ?? null,

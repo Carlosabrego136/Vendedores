@@ -104,10 +104,12 @@ function CampoFoto({ valor, onChange, etiquetaVacio, etiquetaConValor, maxAncho,
       {valor && <img src={valor} alt="Foto" className={claseVistaPrevia || 'vend-ine-preview'} />}
       <label className="vend-btn-mini secundario vend-ine-boton">
         {subiendo ? 'Procesando...' : valor ? etiquetaConValor : etiquetaVacio}
+        {/* Sin el atributo "capture": así el celular muestra las dos
+            opciones (tomar foto o elegir de la galería) en vez de forzar
+            que se abra directo la cámara, como pidió la clienta. */}
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           onChange={alSeleccionar}
           style={{ display: 'none' }}
         />
@@ -116,9 +118,10 @@ function CampoFoto({ valor, onChange, etiquetaVacio, etiquetaConValor, maxAncho,
   );
 }
 
-function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton }) {
+function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton, categorias }) {
   const [datos, setDatos] = useState({
     nombre: inicial?.nombre || '',
+    categoria_id: inicial?.categoria_id || '',
     telefono: inicial?.telefono || '',
     fecha_nacimiento: inicial?.fecha_nacimiento ? inicial.fecha_nacimiento.slice(0, 10) : '',
     facebook: inicial?.facebook || '',
@@ -145,6 +148,17 @@ function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton }) {
         <div>
           <label>Teléfono</label>
           <input value={datos.telefono} onChange={(e) => set('telefono', e.target.value)} placeholder="Ej. 646 123 4567" />
+        </div>
+        <div>
+          <label>Categoría</label>
+          <select value={datos.categoria_id} onChange={(e) => set('categoria_id', e.target.value)}>
+            <option value="">Sin categoría</option>
+            {(categorias || []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label>Fecha de nacimiento</label>
@@ -243,6 +257,7 @@ export default function Vendedores() {
   const [mostrarReporte, setMostrarReporte] = useState(false);
   const [totales, setTotales] = useState(null);
   const [avisoCopiado, setAvisoCopiado] = useState('');
+  const [categorias, setCategorias] = useState([]);
 
   async function cargar() {
     setCargando(true);
@@ -250,6 +265,11 @@ export default function Vendedores() {
     const res = await fetch(url);
     setVendedores(await res.json());
     setCargando(false);
+  }
+
+  async function cargarCategorias() {
+    const res = await fetch('/api/categorias');
+    setCategorias(await res.json());
   }
 
   async function cargarPorVencer() {
@@ -268,6 +288,10 @@ export default function Vendedores() {
     cargarTotales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mostrarInactivos]);
+
+  useEffect(() => {
+    cargarCategorias();
+  }, []);
 
   async function crear(datos) {
     if (!datos.nombre.trim()) {
@@ -479,7 +503,12 @@ export default function Vendedores() {
               </button>
             </div>
             {mostrarAlta && (
-              <FormularioVendedor onGuardar={crear} textoBoton="Agregar vendedor" onCancelar={() => setMostrarAlta(false)} />
+              <FormularioVendedor
+                onGuardar={crear}
+                textoBoton="Agregar vendedor"
+                onCancelar={() => setMostrarAlta(false)}
+                categorias={categorias}
+              />
             )}
           </section>
 
@@ -567,6 +596,7 @@ export default function Vendedores() {
 
                       <div className="vend-tarjeta-datos">
                         {v.telefono && <span>📞 {v.telefono}</span>}
+                        {v.categoria_nombre && <span>Categoría: {v.categoria_nombre}</span>}
                         <span>Ingreso: {formatoFecha(v.fecha_ingreso)}</span>
                         <span>Vencimiento: {formatoFecha(v.fecha_vencimiento)}</span>
                       </div>
@@ -577,6 +607,7 @@ export default function Vendedores() {
                           onGuardar={(datos) => guardarEdicion(v.id, datos)}
                           onCancelar={() => setEditandoId(null)}
                           textoBoton="Guardar cambios"
+                          categorias={categorias}
                         />
                       ) : (
                         <div className="vend-tarjeta-acciones">
