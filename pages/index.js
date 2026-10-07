@@ -523,6 +523,9 @@ export default function Vendedores() {
             <Link href="/imprimir-qr" className="vend-btn vend-btn-asistencia">
               🖨 Imprimir varios QR
             </Link>
+            <Link href="/imprimir-credenciales" className="vend-btn vend-btn-asistencia">
+              🖨 Imprimir varias credenciales
+            </Link>
           </div>
         </header>
 

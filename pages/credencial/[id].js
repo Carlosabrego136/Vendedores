@@ -64,6 +64,9 @@ export default function Credencial({ id, nombreReal, nombreFacebook, numeroRegis
           <Link href={`/qr/${id}`} className="btn secondary">
             Ver tarjeta del QR
           </Link>
+          <Link href="/imprimir-credenciales" className="btn secondary">
+            Imprimir varias
+          </Link>
           <button className="btn" onClick={() => window.print()}>
             Imprimir credencial
           </button>
