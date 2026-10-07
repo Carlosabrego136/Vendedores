@@ -47,9 +47,14 @@ export default function VerQr({ id, nombreMostrado, qrCodigo, numeroRegistro }) 
         <Link href="/" className="btn secondary">
           ← Volver a Vendedores
         </Link>
-        <button className="btn" onClick={() => window.print()}>
-          Imprimir
-        </button>
+        <div className="qr-barra-derecha">
+          <Link href={`/credencial/${id}`} className="btn secondary">
+            Ver credencial
+          </Link>
+          <button className="btn" onClick={() => window.print()}>
+            Imprimir
+          </button>
+        </div>
       </div>
 
       <div className="qr-tarjeta">
@@ -78,7 +83,15 @@ export default function VerQr({ id, nombreMostrado, qrCodigo, numeroRegistro }) 
           max-width: 420px;
           display: flex;
           justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 10px;
           margin-bottom: 24px;
+        }
+        .qr-barra-derecha {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
         .btn {
           display: inline-block;

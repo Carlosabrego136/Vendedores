@@ -31,6 +31,7 @@ export default async function handler(req, res) {
       referencia2_nombre,
       referencia2_telefono,
       ine_foto,
+      foto_credencial,
       estatus,
     } = req.body;
 
@@ -59,8 +60,9 @@ export default async function handler(req, res) {
            referencia2_nombre = COALESCE($12, referencia2_nombre),
            referencia2_telefono = COALESCE($13, referencia2_telefono),
            ine_foto = COALESCE($14, ine_foto),
-           estatus = COALESCE($15, estatus)
-       WHERE id = $16
+           estatus = COALESCE($15, estatus),
+           foto_credencial = COALESCE($16, foto_credencial)
+       WHERE id = $17
        RETURNING id, nombre, qr_codigo, estatus, activo, fecha_ingreso, fecha_vencimiento`,
       [
         nombre ?? null,
@@ -78,6 +80,7 @@ export default async function handler(req, res) {
         referencia2_telefono ?? null,
         ine_foto ?? null,
         estatus ?? null,
+        foto_credencial ?? null,
         id,
       ]
     );

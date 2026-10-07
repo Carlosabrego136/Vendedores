@@ -101,6 +101,9 @@ export default function FichaVendedor({ vendedor }) {
           <Link href={`/qr/${vendedor.id}`} className="btn secondary">
             Ver solo el QR
           </Link>
+          <Link href={`/credencial/${vendedor.id}`} className="btn secondary">
+            Ver credencial
+          </Link>
           <button className="btn" onClick={() => window.print()}>
             Imprimir ficha
           </button>

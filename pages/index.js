@@ -56,9 +56,11 @@ function diasParaVencer(fechaVencimiento) {
   return Math.round((venc - hoy) / (1000 * 60 * 60 * 24));
 }
 
-// Comprime la foto de la INE en el navegador antes de subirla, para que no
-// se guarde un archivo enorme en la base de datos.
-function comprimirImagen(file) {
+// Comprime una foto en el navegador antes de subirla, para que no se guarde
+// un archivo enorme en la base de datos. maxAncho/calidad se ajustan según
+// el uso: la INE solo necesita leerse, mientras que la foto de la credencial
+// se imprime, así que se guarda un poco más grande/nítida.
+function comprimirImagen(file, maxAncho = 900, calidad = 0.7) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
@@ -66,14 +68,13 @@ function comprimirImagen(file) {
       const img = new Image();
       img.onerror = () => reject(new Error('No se pudo procesar la imagen'));
       img.onload = () => {
-        const maxAncho = 900;
         const escala = Math.min(1, maxAncho / img.width);
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(img.width * escala);
         canvas.height = Math.round(img.height * escala);
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
+        resolve(canvas.toDataURL('image/jpeg', calidad));
       };
       img.src = ev.target.result;
     };
@@ -81,7 +82,7 @@ function comprimirImagen(file) {
   });
 }
 
-function CampoIne({ valor, onChange }) {
+function CampoFoto({ valor, onChange, etiquetaVacio, etiquetaConValor, maxAncho, calidad, claseVistaPrevia }) {
   const [subiendo, setSubiendo] = useState(false);
 
   async function alSeleccionar(e) {
@@ -89,7 +90,7 @@ function CampoIne({ valor, onChange }) {
     if (!file) return;
     setSubiendo(true);
     try {
-      const dataUrl = await comprimirImagen(file);
+      const dataUrl = await comprimirImagen(file, maxAncho, calidad);
       onChange(dataUrl);
     } catch (err) {
       alert('No se pudo procesar la foto, intenta de nuevo.');
@@ -100,9 +101,9 @@ function CampoIne({ valor, onChange }) {
 
   return (
     <div className="vend-ine">
-      {valor && <img src={valor} alt="Foto de la INE" className="vend-ine-preview" />}
+      {valor && <img src={valor} alt="Foto" className={claseVistaPrevia || 'vend-ine-preview'} />}
       <label className="vend-btn-mini secundario vend-ine-boton">
-        {subiendo ? 'Procesando...' : valor ? 'Cambiar foto de INE' : 'Tomar foto de INE'}
+        {subiendo ? 'Procesando...' : valor ? etiquetaConValor : etiquetaVacio}
         <input
           type="file"
           accept="image/*"
@@ -126,6 +127,7 @@ function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton }) {
     referencia2_nombre: inicial?.referencia2_nombre || '',
     referencia2_telefono: inicial?.referencia2_telefono || '',
     ine_foto: inicial?.ine_foto || '',
+    foto_credencial: inicial?.foto_credencial || '',
     estatus: inicial?.estatus || 'activo',
   });
 
@@ -171,7 +173,27 @@ function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton }) {
       </div>
 
       <label style={{ marginTop: 10, display: 'block' }}>Foto de la INE</label>
-      <CampoIne valor={datos.ine_foto} onChange={(v) => set('ine_foto', v)} />
+      <CampoFoto
+        valor={datos.ine_foto}
+        onChange={(v) => set('ine_foto', v)}
+        etiquetaVacio="Tomar foto de INE"
+        etiquetaConValor="Cambiar foto de INE"
+        maxAncho={900}
+        calidad={0.7}
+      />
+
+      <label style={{ marginTop: 14, display: 'block' }}>
+        Foto para la credencial (retrato del vendedor)
+      </label>
+      <CampoFoto
+        valor={datos.foto_credencial}
+        onChange={(v) => set('foto_credencial', v)}
+        etiquetaVacio="Tomar foto para la credencial"
+        etiquetaConValor="Cambiar foto de la credencial"
+        maxAncho={700}
+        calidad={0.85}
+        claseVistaPrevia="vend-credencial-foto-preview"
+      />
 
       <label style={{ marginTop: 14, display: 'block' }}>Estatus del vendedor</label>
       <div className="vend-estatus-opciones">
@@ -561,6 +583,9 @@ export default function Vendedores() {
                           <Link className="vend-btn-mini" href={`/qr/${v.id}`}>
                             Ver / imprimir QR
                           </Link>
+                          <Link className="vend-btn-mini" href={`/credencial/${v.id}`}>
+                            Ver credencial
+                          </Link>
                           <Link className="vend-btn-mini" href={`/ficha/${v.id}`}>
                             Ver ficha completa
                           </Link>
@@ -835,6 +860,13 @@ export default function Vendedores() {
         }
         .vend-ine-boton {
           cursor: pointer;
+        }
+        .vend-credencial-foto-preview {
+          width: 60px;
+          height: 80px;
+          object-fit: cover;
+          border-radius: 8px;
+          border: 1px solid rgba(199, 205, 216, 0.4);
         }
         .vend-estatus-opciones {
           display: flex;
