@@ -41,9 +41,15 @@ export default function ImprimirCredenciales() {
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [seleccionados, setSeleccionados] = useState(() => new Set());
-  // Cuántas fotos de credencial ya terminaron de cargar (o fallaron, o no
-  // tienen) de las tarjetas que se están por imprimir — para no mandar a
-  // imprimir fotos en blanco porque no alcanzaron a cargar a tiempo.
+  // La lista general de /api/vendedores no trae la foto de la credencial
+  // completa de cada quien (solo si tiene o no, "tiene_foto_credencial"),
+  // para no hacer pesada esa lista. Aquí se va guardando la foto real de
+  // cada vendedor seleccionado, pedida aparte, según se necesita.
+  const [fotos, setFotos] = useState({});
+  // Cuántas tarjetas ya están listas para imprimirse (ya sea porque no
+  // tienen foto, o porque su foto ya se trajo del servidor y ya terminó de
+  // cargar en pantalla) — para no mandar a imprimir fotos en blanco porque
+  // no alcanzaron a llegar a tiempo.
   const [cargadas, setCargadas] = useState(0);
 
   useEffect(() => {
@@ -67,7 +73,7 @@ export default function ImprimirCredenciales() {
     [vendedores, seleccionados]
   );
 
-  const sinFoto = useMemo(() => tarjetas.filter((v) => !v.foto_credencial), [tarjetas]);
+  const sinFoto = useMemo(() => tarjetas.filter((v) => !v.tiene_foto_credencial), [tarjetas]);
 
   const hojas = useMemo(() => {
     const grupos = [];
@@ -77,10 +83,51 @@ export default function ImprimirCredenciales() {
     return grupos;
   }, [tarjetas]);
 
+  // Por cada tarjeta seleccionada que sí tiene foto de credencial, se pide
+  // su foto completa (si todavía no la teníamos ya guardada en "fotos").
   useEffect(() => {
-    // Las tarjetas sin foto no tienen imagen que cargar, así que ya cuentan
-    // como "listas" desde el inicio.
-    setCargadas(tarjetas.filter((v) => !v.foto_credencial).length);
+    let cancelado = false;
+    async function traerFaltantes() {
+      const faltantes = tarjetas.filter((v) => v.tiene_foto_credencial && !(v.id in fotos));
+      if (faltantes.length === 0) return;
+      const resultados = await Promise.all(
+        faltantes.map(async (v) => {
+          try {
+            const res = await fetch(`/api/vendedores/${v.id}`);
+            if (!res.ok) return [v.id, null];
+            const datos = await res.json();
+            return [v.id, datos.foto_credencial || null];
+          } catch (err) {
+            return [v.id, null];
+          }
+        })
+      );
+      if (cancelado) return;
+      setFotos((prev) => {
+        const siguiente = { ...prev };
+        resultados.forEach(([id, foto]) => {
+          siguiente[id] = foto;
+        });
+        return siguiente;
+      });
+      // Si alguna foto no se pudo traer (error de red), esa tarjeta ya no
+      // tiene imagen que esperar — se cuenta como lista para no dejar el
+      // botón de imprimir trabado para siempre.
+      const fallidas = resultados.filter(([, foto]) => !foto).length;
+      if (fallidas > 0) setCargadas((n) => n + fallidas);
+    }
+    traerFaltantes();
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tarjetas]);
+
+  useEffect(() => {
+    // Las tarjetas sin foto ya cuentan como "listas" desde el inicio; las
+    // que sí tienen foto se van sumando cuando su imagen termina de cargar
+    // (o falla al traerla, ver arriba).
+    setCargadas(tarjetas.filter((v) => !v.tiene_foto_credencial).length);
   }, [tarjetas]);
 
   const todasCargadas = tarjetas.length > 0 && cargadas >= tarjetas.length;
@@ -173,7 +220,7 @@ export default function ImprimirCredenciales() {
                 />
                 <span className="ic-fila-nombre">{v.nombre}</span>
                 {v.facebook && <span className="ic-fila-facebook">Facebook: {v.facebook}</span>}
-                {!v.foto_credencial && <span className="ic-fila-sinfoto">Sin foto</span>}
+                {!v.tiene_foto_credencial && <span className="ic-fila-sinfoto">Sin foto</span>}
                 {formatoNumeroRegistro(v.numero_registro) && (
                   <span className="ic-fila-numero">No. {formatoNumeroRegistro(v.numero_registro)}</span>
                 )}
@@ -191,15 +238,16 @@ export default function ImprimirCredenciales() {
           <div className="ic-hoja" key={indiceHoja}>
             {grupo.map((v) => {
               const nombreFacebook = nombreParaTarjeta(v);
+              const foto = fotos[v.id];
               return (
                 <div className="ic-tarjeta" key={v.id}>
                   <img src="/credencial-fondo.jpg" alt="" className="ic-fondo" />
                   <img src="/credencial-logo.png" alt="" className="ic-logo" />
 
                   <div className="ic-foto-caja">
-                    {v.foto_credencial ? (
+                    {foto ? (
                       <img
-                        src={v.foto_credencial}
+                        src={foto}
                         alt={nombreFacebook}
                         className="ic-foto"
                         onLoad={() => setCargadas((n) => n + 1)}
