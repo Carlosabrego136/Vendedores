@@ -46,6 +46,60 @@ function formatoNumeroRegistro(n) {
   return String(n).padStart(4, '0');
 }
 
+// En las listas solo se debe ver el nombre de Facebook del vendedor (y si no
+// tiene, su nombre real como respaldo) — por seguridad, para no exponer el
+// nombre real de las personas. El nombre real solo se sigue mostrando en la
+// ficha completa del vendedor.
+function nombreMostrar(v) {
+  return v.facebook && v.facebook.trim() ? v.facebook.trim() : v.nombre;
+}
+
+// Convierte un texto escrito a mano ("Ropa y calzado") en una "clave" simple
+// para guardarla en la base de datos (sin acentos, espacios ni símbolos).
+function generarClave(nombre) {
+  return (
+    nombre
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'cat'
+  );
+}
+
+// Dado el texto que se escribió en el campo "Categoría", busca si ya existe
+// una categoría con ese nombre (sin importar mayúsculas/espacios) y reusa su
+// id; si no existe, la crea en ese momento. Así el campo queda "editable
+// escribiendo" sin duplicar categorías por error.
+async function resolverCategoriaId(textoCategoria, categoriasActuales, onNuevaCategoria) {
+  const texto = (textoCategoria || '').trim();
+  if (!texto) return null;
+
+  const existente = categoriasActuales.find(
+    (c) => c.nombre.trim().toLowerCase() === texto.toLowerCase()
+  );
+  if (existente) return existente.id;
+
+  const base = generarClave(texto);
+  const clavesUsadas = new Set(categoriasActuales.map((c) => c.clave));
+  let clave = base;
+  let sufijo = 2;
+  while (clavesUsadas.has(clave)) {
+    clave = `${base}-${sufijo}`;
+    sufijo += 1;
+  }
+
+  const res = await fetch('/api/categorias', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clave, nombre: texto }),
+  });
+  if (!res.ok) return null;
+  const nueva = await res.json();
+  if (onNuevaCategoria) onNuevaCategoria(nueva);
+  return nueva.id;
+}
+
 function diasParaVencer(fechaVencimiento) {
   const corta = soloFecha(fechaVencimiento);
   if (!corta) return null;
@@ -121,7 +175,7 @@ function CampoFoto({ valor, onChange, etiquetaVacio, etiquetaConValor, maxAncho,
 function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton, categorias }) {
   const [datos, setDatos] = useState({
     nombre: inicial?.nombre || '',
-    categoria_id: inicial?.categoria_id || '',
+    categoria_texto: inicial?.categoria_nombre || '',
     telefono: inicial?.telefono || '',
     fecha_nacimiento: inicial?.fecha_nacimiento ? inicial.fecha_nacimiento.slice(0, 10) : '',
     facebook: inicial?.facebook || '',
@@ -151,14 +205,12 @@ function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton, catego
         </div>
         <div>
           <label>Categoría</label>
-          <select value={datos.categoria_id} onChange={(e) => set('categoria_id', e.target.value)}>
-            <option value="">Sin categoría</option>
-            {(categorias || []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
+          <input
+            list="vend-categorias-lista"
+            value={datos.categoria_texto}
+            onChange={(e) => set('categoria_texto', e.target.value)}
+            placeholder="Ej. Ropa, calzado, marca..."
+          />
         </div>
         <div>
           <label>Fecha de nacimiento</label>
@@ -272,6 +324,10 @@ export default function Vendedores() {
     setCategorias(await res.json());
   }
 
+  function agregarCategoriaLocal(nueva) {
+    setCategorias((cs) => (cs.some((c) => c.id === nueva.id) ? cs : [...cs, nueva]));
+  }
+
   async function cargarPorVencer() {
     const res = await fetch('/api/vendedores/por-vencer');
     setPorVencer(await res.json());
@@ -298,10 +354,12 @@ export default function Vendedores() {
       alert('El nombre es obligatorio.');
       return;
     }
+    const { categoria_texto, ...resto } = datos;
+    const categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
     await fetch('/api/vendedores', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(datos),
+      body: JSON.stringify({ ...resto, categoria_id }),
     });
     setMostrarAlta(false);
     cargar();
@@ -310,10 +368,12 @@ export default function Vendedores() {
   }
 
   async function guardarEdicion(id, datos) {
+    const { categoria_texto, ...resto } = datos;
+    const categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
     await fetch(`/api/vendedores/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(datos),
+      body: JSON.stringify({ ...resto, categoria_id }),
     });
     setEditandoId(null);
     cargar();
@@ -443,6 +503,12 @@ export default function Vendedores() {
         <source src={VIDEO_FONDO} type="video/mp4" />
       </video>
 
+      <datalist id="vend-categorias-lista">
+        {categorias.map((c) => (
+          <option key={c.id} value={c.nombre} />
+        ))}
+      </datalist>
+
       <div className="vend-content">
         <header className="vend-header">
           <div className="vend-brand">
@@ -479,7 +545,7 @@ export default function Vendedores() {
                         const vencido = dias !== null && dias < 0;
                         return (
                           <div key={v.id} className="vend-reporte-item">
-                            <span>{v.nombre}</span>
+                            <span>{nombreMostrar(v)}</span>
                             <span className={vencido ? 'vencido' : 'por-vencer-texto'}>
                               {vencido
                                 ? `Venció el ${formatoFecha(v.fecha_vencimiento)}`
@@ -573,7 +639,7 @@ export default function Vendedores() {
                           {formatoNumeroRegistro(v.numero_registro) && (
                             <span className="vend-numero-registro">{formatoNumeroRegistro(v.numero_registro)}</span>
                           )}
-                          {v.nombre}
+                          {nombreMostrar(v)}
                         </span>
                         <div className="vend-badges">
                           <span
