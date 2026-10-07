@@ -141,6 +141,10 @@ function CampoFoto({ valor, onChange, etiquetaVacio, etiquetaConValor, maxAncho,
 
   async function alSeleccionar(e) {
     const file = e.target.files[0];
+    // Se limpia el input para que, si se vuelve a elegir el mismo archivo
+    // (por ejemplo tomar otra foto y repetirla), el evento onChange se
+    // dispare de nuevo igual.
+    e.target.value = '';
     if (!file) return;
     setSubiendo(true);
     try {
@@ -153,21 +157,35 @@ function CampoFoto({ valor, onChange, etiquetaVacio, etiquetaConValor, maxAncho,
     }
   }
 
+  // Dos botones separados y explícitos en vez de uno solo: en varios
+  // celulares Android, un solo input sin "capture" a veces abre directo la
+  // galería y nunca ofrece la cámara (según el modelo/versión de Android).
+  // Con un botón para cada cosa, las dos opciones quedan siempre visibles
+  // sin depender de lo que decida el teléfono.
   return (
     <div className="vend-ine">
       {valor && <img src={valor} alt="Foto" className={claseVistaPrevia || 'vend-ine-preview'} />}
-      <label className="vend-btn-mini secundario vend-ine-boton">
-        {subiendo ? 'Procesando...' : valor ? etiquetaConValor : etiquetaVacio}
-        {/* Sin el atributo "capture": así el celular muestra las dos
-            opciones (tomar foto o elegir de la galería) en vez de forzar
-            que se abra directo la cámara, como pidió la clienta. */}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={alSeleccionar}
-          style={{ display: 'none' }}
-        />
-      </label>
+      <div className="vend-ine-botones">
+        <label className="vend-btn-mini secundario vend-ine-boton">
+          {subiendo ? 'Procesando...' : `📷 ${valor ? 'Tomar otra foto' : 'Tomar foto'}`}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={alSeleccionar}
+            style={{ display: 'none' }}
+          />
+        </label>
+        <label className="vend-btn-mini secundario vend-ine-boton">
+          {subiendo ? 'Procesando...' : `🖼 ${valor ? 'Elegir otra de galería' : 'Elegir de galería'}`}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={alSeleccionar}
+            style={{ display: 'none' }}
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -957,6 +975,11 @@ export default function Vendedores() {
           object-fit: cover;
           border-radius: 8px;
           border: 1px solid rgba(199, 205, 216, 0.4);
+        }
+        .vend-ine-botones {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
         .vend-ine-boton {
           cursor: pointer;
