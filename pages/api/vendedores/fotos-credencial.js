@@ -7,6 +7,15 @@ const { query } = require('../../../lib/db');
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
 
+  // Esta respuesta nunca se debe guardar en caché: la lista de ids
+  // seleccionados se repite seguido (es normal seleccionar/deseleccionar
+  // los mismos vendedores varias veces), y sin este encabezado el
+  // navegador puede reusar una respuesta vieja (por ejemplo, una que haya
+  // fallado antes) en vez de pedir los datos frescos — eso fue lo que hizo
+  // que "Imprimir varias credenciales" se quedara pegada aunque el
+  // servidor ya estuviera respondiendo bien.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+
   const idsParam = req.query.ids;
   if (!idsParam) return res.status(200).json([]);
 
