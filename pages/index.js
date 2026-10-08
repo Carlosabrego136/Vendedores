@@ -323,6 +323,11 @@ export default function Vendedores() {
   const [busqueda, setBusqueda] = useState('');
   const [mostrarAlta, setMostrarAlta] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
+  // La lista general no trae las fotos completas de cada vendedor (solo si
+  // tiene o no, para no hacerla pesada). Antes de editar a alguien se traen
+  // aquí sus fotos reales, para que el formulario las muestre y nunca las
+  // mande vacías por accidente (lo cual las borraba).
+  const [fotosEdicion, setFotosEdicion] = useState({});
   const [porVencer, setPorVencer] = useState([]);
   const [mostrarReporte, setMostrarReporte] = useState(false);
   const [totales, setTotales] = useState(null);
@@ -383,6 +388,27 @@ export default function Vendedores() {
     cargar();
     cargarPorVencer();
     cargarTotales();
+  }
+
+  // Trae la foto de INE y la de credencial reales de este vendedor antes de
+  // abrir su formulario de edición (la lista general no las trae, para no
+  // hacerla pesada), para que se vean en el formulario y nunca se manden
+  // vacías sin querer.
+  async function iniciarEdicion(v) {
+    setEditandoId(v.id);
+    if (fotosEdicion[v.id]) return;
+    try {
+      const res = await fetch(`/api/vendedores/${v.id}`);
+      if (!res.ok) return;
+      const datos = await res.json();
+      setFotosEdicion((prev) => ({
+        ...prev,
+        [v.id]: { ine_foto: datos.ine_foto || '', foto_credencial: datos.foto_credencial || '' },
+      }));
+    } catch (err) {
+      // Si falla, el formulario se queda esperando — se puede cancelar y
+      // reintentar.
+    }
   }
 
   async function guardarEdicion(id, datos) {
@@ -689,13 +715,17 @@ export default function Vendedores() {
                       </div>
 
                       {editandoId === v.id ? (
-                        <FormularioVendedor
-                          inicial={v}
-                          onGuardar={(datos) => guardarEdicion(v.id, datos)}
-                          onCancelar={() => setEditandoId(null)}
-                          textoBoton="Guardar cambios"
-                          categorias={categorias}
-                        />
+                        fotosEdicion[v.id] ? (
+                          <FormularioVendedor
+                            inicial={{ ...v, ...fotosEdicion[v.id] }}
+                            onGuardar={(datos) => guardarEdicion(v.id, datos)}
+                            onCancelar={() => setEditandoId(null)}
+                            textoBoton="Guardar cambios"
+                            categorias={categorias}
+                          />
+                        ) : (
+                          <p className="vend-vacio">Cargando datos del vendedor...</p>
+                        )
                       ) : (
                         <div className="vend-tarjeta-acciones">
                           <Link className="vend-btn-mini" href={`/qr/${v.id}`}>
@@ -707,7 +737,7 @@ export default function Vendedores() {
                           <Link className="vend-btn-mini" href={`/ficha/${v.id}`}>
                             Ver ficha completa
                           </Link>
-                          <button className="vend-btn-mini secundario" onClick={() => setEditandoId(v.id)}>
+                          <button className="vend-btn-mini secundario" onClick={() => iniciarEdicion(v)}>
                             Editar
                           </button>
                           <button className="vend-btn-mini secundario" onClick={() => alternarActivo(v)}>

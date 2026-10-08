@@ -31,7 +31,7 @@ export default async function handler(req, res) {
        FROM vendedores v
        LEFT JOIN categorias c ON c.id = v.categoria_id
        ${incluirInactivos ? '' : 'WHERE v.activo = true'}
-       ORDER BY v.nombre ASC`
+       ORDER BY v.numero_registro ASC NULLS LAST, v.nombre ASC`
     );
     return res.status(200).json(rows);
   }

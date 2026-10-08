@@ -51,6 +51,14 @@ export default async function handler(req, res) {
     // uuid.
     const categoriaIdParam = categoria_id === null || categoria_id === '' ? '__null__' : categoria_id ?? null;
 
+    // Si no se manda una foto nueva (o se manda cadena vacía, que es lo que
+    // pasa cuando el formulario de edición no trae la foto que ya existía),
+    // NO se debe tocar la que ya estaba guardada. Antes se mandaba "" y
+    // COALESCE la tomaba como un valor real, borrando la foto — por eso
+    // aquí se trata igual que si no se hubiera mandado nada.
+    const ineFotoParam = ine_foto || null;
+    const fotoCredencialParam = foto_credencial || null;
+
     const { rows } = await query(
       `UPDATE vendedores
        SET nombre = COALESCE($1, nombre),
@@ -84,9 +92,9 @@ export default async function handler(req, res) {
         referencia1_telefono ?? null,
         referencia2_nombre ?? null,
         referencia2_telefono ?? null,
-        ine_foto ?? null,
+        ineFotoParam,
         estatus ?? null,
-        foto_credencial ?? null,
+        fotoCredencialParam,
         id,
       ]
     );

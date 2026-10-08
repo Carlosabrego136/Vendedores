@@ -83,26 +83,34 @@ export default function ImprimirCredenciales() {
     return grupos;
   }, [tarjetas]);
 
-  // Por cada tarjeta seleccionada que sí tiene foto de credencial, se pide
-  // su foto completa (si todavía no la teníamos ya guardada en "fotos").
+  // Se piden de un solo jalón (una sola consulta) las fotos de credencial
+  // de todos los seleccionados que todavía no se tengan guardadas en
+  // "fotos" — antes se pedía una por una por cada vendedor, y con
+  // selecciones grandes eso se trababa o tardaba mucho.
   useEffect(() => {
     let cancelado = false;
     async function traerFaltantes() {
       const faltantes = tarjetas.filter((v) => v.tiene_foto_credencial && !(v.id in fotos));
       if (faltantes.length === 0) return;
-      const resultados = await Promise.all(
-        faltantes.map(async (v) => {
-          try {
-            const res = await fetch(`/api/vendedores/${v.id}`);
-            if (!res.ok) return [v.id, null];
-            const datos = await res.json();
-            return [v.id, datos.foto_credencial || null];
-          } catch (err) {
-            return [v.id, null];
-          }
-        })
-      );
+      const ids = faltantes.map((v) => v.id).join(',');
+      let resultados = [];
+      try {
+        const res = await fetch(`/api/vendedores/fotos-credencial?ids=${encodeURIComponent(ids)}`);
+        if (res.ok) {
+          const filas = await res.json();
+          resultados = filas.map((f) => [f.id, f.foto_credencial || null]);
+        }
+      } catch (err) {
+        resultados = [];
+      }
       if (cancelado) return;
+      // Cualquier seleccionado que se haya pedido pero no vino en la
+      // respuesta (por ejemplo, si falló la consulta) se marca como sin
+      // foto encontrada, para no dejar el botón de imprimir trabado.
+      const idsRecibidos = new Set(resultados.map(([id]) => id));
+      faltantes.forEach((v) => {
+        if (!idsRecibidos.has(v.id)) resultados.push([v.id, null]);
+      });
       setFotos((prev) => {
         const siguiente = { ...prev };
         resultados.forEach(([id, foto]) => {
@@ -110,9 +118,8 @@ export default function ImprimirCredenciales() {
         });
         return siguiente;
       });
-      // Si alguna foto no se pudo traer (error de red), esa tarjeta ya no
-      // tiene imagen que esperar — se cuenta como lista para no dejar el
-      // botón de imprimir trabado para siempre.
+      // Las que no tenían foto real a pesar de esperarse (error o dato
+      // faltante) ya cuentan como listas, para no dejar el botón trabado.
       const fallidas = resultados.filter(([, foto]) => !foto).length;
       if (fallidas > 0) setCargadas((n) => n + fallidas);
     }
