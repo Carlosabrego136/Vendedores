@@ -16,9 +16,19 @@ export default async function handler(req, res) {
     .filter(Boolean);
   if (ids.length === 0) return res.status(200).json([]);
 
-  const { rows } = await query(
-    'SELECT id, foto_credencial FROM vendedores WHERE id = ANY($1::uuid[])',
-    [ids]
-  );
-  return res.status(200).json(rows);
+  try {
+    const { rows } = await query(
+      'SELECT id, foto_credencial FROM vendedores WHERE id = ANY($1::uuid[])',
+      [ids]
+    );
+    return res.status(200).json(rows);
+  } catch (err) {
+    // Antes, si la consulta tronaba (ej. por un id raro o un problema
+    // pasajero de conexión), la función se caía sin responder nada y la
+    // pantalla de imprimir se quedaba esperando sin saber qué pasó. Ahora
+    // siempre se contesta algo, para que el navegador pueda avisar y dejar
+    // reintentar en vez de quedarse trabado.
+    console.error('Error al traer fotos de credencial:', err);
+    return res.status(500).json({ error: 'No se pudieron traer las fotos en este momento.' });
+  }
 }

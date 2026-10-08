@@ -51,6 +51,13 @@ export default function ImprimirCredenciales() {
   // cargar en pantalla) — para no mandar a imprimir fotos en blanco porque
   // no alcanzaron a llegar a tiempo.
   const [cargadas, setCargadas] = useState(0);
+  // Ids de vendedores cuya foto falló al traerse (error del servidor, o se
+  // tardó demasiado y se cortó sola) — antes, si la petición se quedaba
+  // trabada, la pantalla se quedaba esperando para siempre sin ningún aviso
+  // ni forma de reintentar. Ahora se guarda aquí para poder avisar y dar un
+  // botón de "Reintentar".
+  const [erroresCarga, setErroresCarga] = useState(() => new Set());
+  const [intentoFotos, setIntentoFotos] = useState(0);
 
   useEffect(() => {
     async function cargar() {
@@ -75,6 +82,14 @@ export default function ImprimirCredenciales() {
 
   const sinFoto = useMemo(() => tarjetas.filter((v) => !v.tiene_foto_credencial), [tarjetas]);
 
+  // Solo los errores que corresponden a alguien que sigue seleccionado
+  // (si se quita de la selección a alguien que había fallado, ya no tiene
+  // caso seguir mostrando el aviso por esa persona).
+  const erroresVisibles = useMemo(
+    () => tarjetas.filter((v) => erroresCarga.has(v.id)),
+    [tarjetas, erroresCarga]
+  );
+
   const hojas = useMemo(() => {
     const grupos = [];
     for (let i = 0; i < tarjetas.length; i += TARJETAS_POR_HOJA) {
@@ -87,29 +102,51 @@ export default function ImprimirCredenciales() {
   // de todos los seleccionados que todavía no se tengan guardadas en
   // "fotos" — antes se pedía una por una por cada vendedor, y con
   // selecciones grandes eso se trababa o tardaba mucho.
+  //
+  // Además, la petición tiene un límite de tiempo (20 segundos): antes, si
+  // se quedaba a medias (conexión lenta o inestable), se quedaba esperando
+  // para siempre sin ningún aviso — la única salida era recargar toda la
+  // página y volver a seleccionar. Ahora, si tarda demasiado, se corta sola
+  // y se avisa con un botón de "Reintentar".
   useEffect(() => {
     let cancelado = false;
+    const controlador = new AbortController();
+    const limite = setTimeout(() => controlador.abort(), 20000);
+
     async function traerFaltantes() {
       const faltantes = tarjetas.filter((v) => v.tiene_foto_credencial && !(v.id in fotos));
       if (faltantes.length === 0) return;
       const ids = faltantes.map((v) => v.id).join(',');
       let resultados = [];
+      let huboError = false;
       try {
-        const res = await fetch(`/api/vendedores/fotos-credencial?ids=${encodeURIComponent(ids)}`);
+        const res = await fetch(`/api/vendedores/fotos-credencial?ids=${encodeURIComponent(ids)}`, {
+          signal: controlador.signal,
+        });
         if (res.ok) {
           const filas = await res.json();
           resultados = filas.map((f) => [f.id, f.foto_credencial || null]);
+        } else {
+          huboError = true;
         }
       } catch (err) {
+        huboError = true;
         resultados = [];
       }
+      clearTimeout(limite);
       if (cancelado) return;
       // Cualquier seleccionado que se haya pedido pero no vino en la
-      // respuesta (por ejemplo, si falló la consulta) se marca como sin
-      // foto encontrada, para no dejar el botón de imprimir trabado.
+      // respuesta (por ejemplo, si falló o se cortó la consulta) se marca
+      // como sin foto encontrada, para no dejar el botón de imprimir
+      // trabado — y si fue por un error real (no porque el vendedor
+      // simplemente no tenga foto), se guarda aparte para poder reintentar.
       const idsRecibidos = new Set(resultados.map(([id]) => id));
+      const nuevosErrores = new Set();
       faltantes.forEach((v) => {
-        if (!idsRecibidos.has(v.id)) resultados.push([v.id, null]);
+        if (!idsRecibidos.has(v.id)) {
+          resultados.push([v.id, null]);
+          if (huboError) nuevosErrores.add(v.id);
+        }
       });
       setFotos((prev) => {
         const siguiente = { ...prev };
@@ -118,6 +155,9 @@ export default function ImprimirCredenciales() {
         });
         return siguiente;
       });
+      if (nuevosErrores.size > 0) {
+        setErroresCarga((prev) => new Set([...prev, ...nuevosErrores]));
+      }
       // Las que no tenían foto real a pesar de esperarse (error o dato
       // faltante) ya cuentan como listas, para no dejar el botón trabado.
       const fallidas = resultados.filter(([, foto]) => !foto).length;
@@ -126,9 +166,27 @@ export default function ImprimirCredenciales() {
     traerFaltantes();
     return () => {
       cancelado = true;
+      clearTimeout(limite);
+      controlador.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tarjetas]);
+  }, [tarjetas, intentoFotos]);
+
+  // Reintenta traer solo las fotos que fallaron (sin perder las que sí se
+  // cargaron bien ni la selección actual).
+  function reintentarFotosFallidas() {
+    if (erroresCarga.size === 0) return;
+    setFotos((prev) => {
+      const siguiente = { ...prev };
+      erroresCarga.forEach((id) => {
+        delete siguiente[id];
+      });
+      return siguiente;
+    });
+    setCargadas((n) => Math.max(0, n - erroresCarga.size));
+    setErroresCarga(new Set());
+    setIntentoFotos((n) => n + 1);
+  }
 
   useEffect(() => {
     // Las tarjetas sin foto ya cuentan como "listas" desde el inicio; las
@@ -202,6 +260,17 @@ export default function ImprimirCredenciales() {
             : `Cargando fotos... (${cargadas}/${tarjetas.length})`}
         </button>
       </div>
+
+      {erroresVisibles.length > 0 && (
+        <p className="ic-aviso ic-aviso-error no-imprimir">
+          {erroresVisibles.length === 1
+            ? `No se pudo traer la foto de "${nombreParaTarjeta(erroresVisibles[0])}" (tardó demasiado o hubo un problema de conexión).`
+            : `No se pudieron traer ${erroresVisibles.length} fotos (tardaron demasiado o hubo un problema de conexión).`}{' '}
+          <button className="btn secondary ic-btn-reintentar" onClick={reintentarFotosFallidas}>
+            Reintentar
+          </button>
+        </p>
+      )}
 
       {sinFoto.length > 0 && (
         <p className="ic-aviso no-imprimir">
@@ -339,6 +408,18 @@ export default function ImprimirCredenciales() {
           font-size: 13px;
           padding: 10px 14px;
           border-radius: 10px;
+        }
+        .ic-aviso-error {
+          background: #fee2e2;
+          color: #991b1b;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .ic-btn-reintentar {
+          padding: 6px 12px;
+          font-size: 12px;
         }
         .ic-cuerpo {
           padding: 16px;
