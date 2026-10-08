@@ -46,11 +46,13 @@ export default function ImprimirCredenciales() {
   // para no hacer pesada esa lista. Aquí se va guardando la foto real de
   // cada vendedor seleccionado, pedida aparte, según se necesita.
   const [fotos, setFotos] = useState({});
-  // Cuántas tarjetas ya están listas para imprimirse (ya sea porque no
-  // tienen foto, o porque su foto ya se trajo del servidor y ya terminó de
-  // cargar en pantalla) — para no mandar a imprimir fotos en blanco porque
-  // no alcanzaron a llegar a tiempo.
-  const [cargadas, setCargadas] = useState(0);
+  // Ids cuya imagen YA terminó de mostrarse en pantalla (o falló al
+  // mostrarse) — a diferencia de un contador que se va sumando, esto solo
+  // crece y nunca se reinicia por accidente. Antes había un contador
+  // ("cargadas") que se reiniciaba a 0 cada vez que se cambiaba la
+  // selección, y eso borraba el avance de fotos que ya habían cargado bien,
+  // dejando el botón de imprimir atorado aunque todo ya estuviera listo.
+  const [imagenesListas, setImagenesListas] = useState(() => new Set());
   // Ids de vendedores cuya foto falló al traerse (error del servidor, o se
   // tardó demasiado y se cortó sola) — antes, si la petición se quedaba
   // trabada, la pantalla se quedaba esperando para siempre sin ningún aviso
@@ -180,10 +182,6 @@ export default function ImprimirCredenciales() {
       if (nuevosErrores.size > 0) {
         setErroresCarga((prev) => new Set([...prev, ...nuevosErrores]));
       }
-      // Las que no tenían foto real a pesar de esperarse (error o dato
-      // faltante) ya cuentan como listas, para no dejar el botón trabado.
-      const fallidas = resultados.filter(([, foto]) => !foto).length;
-      if (fallidas > 0) setCargadas((n) => n + fallidas);
       agregarLog(
         `Guardado en memoria: ${resultados.length} registro(s) — ahora toca esperar a que cada <img> termine de cargar en pantalla.`
       );
@@ -208,17 +206,25 @@ export default function ImprimirCredenciales() {
       });
       return siguiente;
     });
-    setCargadas((n) => Math.max(0, n - erroresCarga.size));
     setErroresCarga(new Set());
     setIntentoFotos((n) => n + 1);
   }
 
-  useEffect(() => {
-    // Las tarjetas sin foto ya cuentan como "listas" desde el inicio; las
-    // que sí tienen foto se van sumando cuando su imagen termina de cargar
-    // (o falla al traerla, ver arriba).
-    setCargadas(tarjetas.filter((v) => !v.tiene_foto_credencial).length);
-  }, [tarjetas]);
+  // Cuántas de las tarjetas seleccionadas ya están listas para imprimirse,
+  // calculado siempre a partir del estado real (nunca un contador aparte
+  // que se pueda desfasar): está lista si no tiene foto, si ya se supo que
+  // no tiene foto real (fotos[id] es null), o si su imagen ya terminó de
+  // cargar en pantalla.
+  const cargadas = useMemo(
+    () =>
+      tarjetas.filter((v) => {
+        if (!v.tiene_foto_credencial) return true;
+        if (!(v.id in fotos)) return false;
+        if (!fotos[v.id]) return true;
+        return imagenesListas.has(v.id);
+      }).length,
+    [tarjetas, fotos, imagenesListas]
+  );
 
   const todasCargadas = tarjetas.length > 0 && cargadas >= tarjetas.length;
 
@@ -362,11 +368,11 @@ export default function ImprimirCredenciales() {
                         className="ic-foto"
                         onLoad={() => {
                           agregarLog(`Imagen cargada en pantalla: ${v.nombre}`);
-                          setCargadas((n) => n + 1);
+                          setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
                         }}
                         onError={() => {
                           agregarLog(`La imagen de ${v.nombre} no se pudo mostrar (dato dañado o src inválido).`);
-                          setCargadas((n) => n + 1);
+                          setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
                         }}
                       />
                     ) : (
