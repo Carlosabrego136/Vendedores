@@ -58,6 +58,15 @@ export default function ImprimirCredenciales() {
   // botón de "Reintentar".
   const [erroresCarga, setErroresCarga] = useState(() => new Set());
   const [intentoFotos, setIntentoFotos] = useState(0);
+  // Diagnóstico temporal, visible en la misma pantalla (no hace falta
+  // herramientas de desarrollador): va guardando un registro de lo que pasa
+  // cada vez que se piden las fotos, para ver exactamente en qué paso se
+  // queda algo sin resolver.
+  const [debugLog, setDebugLog] = useState([]);
+  function agregarLog(texto) {
+    const hora = new Date().toLocaleTimeString('es-MX', { hour12: false });
+    setDebugLog((prev) => [...prev.slice(-30), `${hora} ${texto}`]);
+  }
 
   useEffect(() => {
     async function cargar() {
@@ -115,26 +124,39 @@ export default function ImprimirCredenciales() {
 
     async function traerFaltantes() {
       const faltantes = tarjetas.filter((v) => v.tiene_foto_credencial && !(v.id in fotos));
-      if (faltantes.length === 0) return;
+      if (faltantes.length === 0) {
+        agregarLog(`Nada que pedir (faltantes=0) para [${tarjetas.map((v) => v.nombre).join(', ')}]`);
+        return;
+      }
       const ids = faltantes.map((v) => v.id).join(',');
+      agregarLog(`Pidiendo ${faltantes.length} foto(s): ${faltantes.map((v) => v.nombre).join(', ')}`);
       let resultados = [];
       let huboError = false;
       try {
         const res = await fetch(`/api/vendedores/fotos-credencial?ids=${encodeURIComponent(ids)}`, {
           signal: controlador.signal,
+          cache: 'no-store',
         });
+        agregarLog(`Respuesta: status=${res.status} ok=${res.ok}`);
         if (res.ok) {
           const filas = await res.json();
           resultados = filas.map((f) => [f.id, f.foto_credencial || null]);
+          agregarLog(
+            `Filas recibidas: ${filas.length} — con foto: ${resultados.filter(([, f]) => f).length}, sin foto: ${resultados.filter(([, f]) => !f).length}`
+          );
         } else {
           huboError = true;
         }
       } catch (err) {
         huboError = true;
         resultados = [];
+        agregarLog(`Error en la petición: ${err && err.name ? err.name : err}`);
       }
       clearTimeout(limite);
-      if (cancelado) return;
+      if (cancelado) {
+        agregarLog('Esta petición se canceló (cambió la selección antes de terminar).');
+        return;
+      }
       // Cualquier seleccionado que se haya pedido pero no vino en la
       // respuesta (por ejemplo, si falló o se cortó la consulta) se marca
       // como sin foto encontrada, para no dejar el botón de imprimir
@@ -162,6 +184,9 @@ export default function ImprimirCredenciales() {
       // faltante) ya cuentan como listas, para no dejar el botón trabado.
       const fallidas = resultados.filter(([, foto]) => !foto).length;
       if (fallidas > 0) setCargadas((n) => n + fallidas);
+      agregarLog(
+        `Guardado en memoria: ${resultados.length} registro(s) — ahora toca esperar a que cada <img> termine de cargar en pantalla.`
+      );
     }
     traerFaltantes();
     return () => {
@@ -261,6 +286,15 @@ export default function ImprimirCredenciales() {
         </button>
       </div>
 
+      {debugLog.length > 0 && (
+        <div className="ic-debug no-imprimir">
+          <p className="ic-debug-titulo">Diagnóstico (temporal):</p>
+          {debugLog.map((linea, i) => (
+            <p key={i} className="ic-debug-linea">{linea}</p>
+          ))}
+        </div>
+      )}
+
       {erroresVisibles.length > 0 && (
         <p className="ic-aviso ic-aviso-error no-imprimir">
           {erroresVisibles.length === 1
@@ -326,8 +360,14 @@ export default function ImprimirCredenciales() {
                         src={foto}
                         alt={nombreFacebook}
                         className="ic-foto"
-                        onLoad={() => setCargadas((n) => n + 1)}
-                        onError={() => setCargadas((n) => n + 1)}
+                        onLoad={() => {
+                          agregarLog(`Imagen cargada en pantalla: ${v.nombre}`);
+                          setCargadas((n) => n + 1);
+                        }}
+                        onError={() => {
+                          agregarLog(`La imagen de ${v.nombre} no se pudo mostrar (dato dañado o src inválido).`);
+                          setCargadas((n) => n + 1);
+                        }}
                       />
                     ) : (
                       <div className="ic-foto-vacia" />
@@ -408,6 +448,26 @@ export default function ImprimirCredenciales() {
           font-size: 13px;
           padding: 10px 14px;
           border-radius: 10px;
+        }
+        .ic-debug {
+          margin: 12px 16px 0;
+          background: #111827;
+          color: #a5f3fc;
+          font-family: monospace;
+          font-size: 11.5px;
+          padding: 10px 14px;
+          border-radius: 10px;
+          max-height: 260px;
+          overflow-y: auto;
+        }
+        .ic-debug-titulo {
+          margin: 0 0 6px;
+          color: #fff;
+          font-weight: 700;
+          font-family: inherit;
+        }
+        .ic-debug-linea {
+          margin: 2px 0;
         }
         .ic-aviso-error {
           background: #fee2e2;
