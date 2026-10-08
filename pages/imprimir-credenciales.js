@@ -65,6 +65,15 @@ export default function ImprimirCredenciales() {
   // cada vez que se piden las fotos, para ver exactamente en qué paso se
   // queda algo sin resolver.
   const [debugLog, setDebugLog] = useState([]);
+  // El panel de diagnóstico solo se muestra si se entra con "?debug=1" en el
+  // link — así la clienta y las vendedoras nunca lo ven, pero nosotros lo
+  // podemos prender cuando lo necesitemos sin tener que tocar el código.
+  const [mostrarDebug, setMostrarDebug] = useState(false);
+  useEffect(() => {
+    try {
+      setMostrarDebug(new URLSearchParams(window.location.search).get('debug') === '1');
+    } catch (err) {}
+  }, []);
   function agregarLog(texto) {
     const hora = new Date().toLocaleTimeString('es-MX', { hour12: false });
     setDebugLog((prev) => [...prev.slice(-30), `${hora} ${texto}`]);
@@ -292,7 +301,7 @@ export default function ImprimirCredenciales() {
         </button>
       </div>
 
-      {debugLog.length > 0 && (
+      {mostrarDebug && debugLog.length > 0 && (
         <div className="ic-debug no-imprimir">
           <p className="ic-debug-titulo">Diagnóstico (temporal):</p>
           {debugLog.map((linea, i) => (
