@@ -301,9 +301,16 @@ export default function ImprimirQr() {
         }
 
         .iq-hojas {
-          position: absolute;
-          left: -9999px;
-          top: 0;
+          /* Oculto en pantalla sin sacarlo del flujo normal del documento
+             (antes se usaba "position: absolute; left: -9999px", pero ese
+             cambio de "absolute" a "static" justo al imprimir podía hacer
+             que el navegador recalculara mal la paginación en celular, con
+             varias hojas seguidas quedando incompletas o con tarjetas
+             movidas). Con height:0 las imágenes siguen precargando igual,
+             pero nunca cambia de "position", así que el cálculo de hojas
+             al imprimir es estable. */
+          height: 0;
+          overflow: hidden;
         }
 
         .iq-tarjeta {
@@ -361,6 +368,16 @@ export default function ImprimirQr() {
         }
 
         @media print {
+          /* Define explícitamente el tamaño de hoja y márgenes chicos: sin
+             esto cada dispositivo/impresora usa sus propios márgenes por
+             default (que varían bastante entre computadora y celular), y
+             como las tarjetas miden exactamente 54mm x 85.6mm, un margen
+             de más podía hacer que no cupiera la tercera fila completa en
+             una sola hoja física. */
+          @page {
+            size: letter;
+            margin: 4mm;
+          }
           .no-imprimir {
             display: none !important;
           }
@@ -368,7 +385,8 @@ export default function ImprimirQr() {
             background: #fff;
           }
           .iq-hojas {
-            position: static;
+            height: auto;
+            overflow: visible;
           }
           .iq-hoja {
             display: grid;
