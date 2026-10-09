@@ -41,6 +41,11 @@ export default function ImprimirQr() {
   // cargado. El mismo bug que se corrigió antes en
   // "Imprimir varias credenciales".
   const [imagenesListas, setImagenesListas] = useState(() => new Set());
+  // Ids cuyo QR falló al cargarse (problema de conexión al pedir la
+  // imagen). Se marca para poder avisar y ofrecer un botón de
+  // "Reintentar" en vez de dejarlo así nada más.
+  const [erroresCarga, setErroresCarga] = useState(() => new Set());
+  const [intentoCarga, setIntentoCarga] = useState(0);
 
   useEffect(() => {
     async function cargar() {
@@ -81,6 +86,27 @@ export default function ImprimirQr() {
   );
 
   const todasCargadas = tarjetas.length > 0 && cargadas >= tarjetas.length;
+
+  // Solo los errores de alguien que sigue seleccionado ahorita.
+  const erroresVisibles = useMemo(
+    () => tarjetas.filter((v) => erroresCarga.has(v.id)),
+    [tarjetas, erroresCarga]
+  );
+
+  // Vuelve a intentar cargar solo los QR que fallaron, sin perder los que
+  // sí cargaron bien ni la selección actual. Cambia el número de intento
+  // para que la imagen pida de nuevo la URL (no se quede pegada al mismo
+  // intento fallido).
+  function reintentarFallidos() {
+    if (erroresCarga.size === 0) return;
+    setImagenesListas((prev) => {
+      const siguiente = new Set(prev);
+      erroresCarga.forEach((id) => siguiente.delete(id));
+      return siguiente;
+    });
+    setErroresCarga(new Set());
+    setIntentoCarga((n) => n + 1);
+  }
 
   function alternar(id) {
     setSeleccionados((prev) => {
@@ -146,6 +172,17 @@ export default function ImprimirQr() {
         </button>
       </div>
 
+      {erroresVisibles.length > 0 && (
+        <p className="iq-aviso iq-aviso-error no-imprimir">
+          {erroresVisibles.length === 1
+            ? `No se pudo cargar el QR de "${nombreParaTarjeta(erroresVisibles[0])}" (problema de conexión).`
+            : `No se pudieron cargar ${erroresVisibles.length} códigos QR (problema de conexión).`}{' '}
+          <button className="btn secondary iq-btn-reintentar" onClick={reintentarFallidos}>
+            Reintentar
+          </button>
+        </p>
+      )}
+
       <div className="iq-cuerpo no-imprimir">
         {cargando ? (
           <p className="iq-vacio">Cargando...</p>
@@ -187,15 +224,25 @@ export default function ImprimirQr() {
                   <h1 className="iq-nombre">{nombreMostrado}</h1>
                   {numero && <p className="iq-numero">No. de registro: {numero}</p>}
                   <img
-                    src={`/api/qr/${v.id}`}
+                    src={`/api/qr/${v.id}${intentoCarga > 0 ? `?r=${intentoCarga}` : ''}`}
                     alt={`Código QR de ${nombreMostrado}`}
                     className="iq-imagen"
-                    onLoad={() =>
-                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)))
-                    }
-                    onError={() =>
-                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)))
-                    }
+                    onLoad={() => {
+                      setErroresCarga((prev) => {
+                        if (!prev.has(v.id)) return prev;
+                        const siguiente = new Set(prev);
+                        siguiente.delete(v.id);
+                        return siguiente;
+                      });
+                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+                    }}
+                    onError={() => {
+                      setErroresCarga((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+                      // Igual se marca como "lista" para no dejar el botón de
+                      // imprimir pegado para siempre — si no se reintenta, esa
+                      // tarjeta sale con el QR en blanco.
+                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+                    }}
                   />
                   <p className="iq-codigo">{v.qr_codigo}</p>
                 </div>
@@ -255,6 +302,26 @@ export default function ImprimirQr() {
           border-radius: 8px;
           border: 1px solid #374151;
         }
+        .iq-aviso {
+          margin: 12px 16px 0;
+          background: #fef3c7;
+          color: #92400e;
+          font-size: 13px;
+          padding: 10px 14px;
+          border-radius: 10px;
+        }
+        .iq-aviso-error {
+          background: #fee2e2;
+          color: #991b1b;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .iq-btn-reintentar {
+          padding: 6px 12px;
+          font-size: 12px;
+        }
         .iq-cuerpo {
           padding: 16px;
         }
@@ -300,17 +367,19 @@ export default function ImprimirQr() {
           padding: 2px 8px;
         }
 
-        .iq-hojas {
-          /* Oculto en pantalla sin sacarlo del flujo normal del documento
-             (antes se usaba "position: absolute; left: -9999px", pero ese
-             cambio de "absolute" a "static" justo al imprimir podía hacer
-             que el navegador recalculara mal la paginación en celular, con
-             varias hojas seguidas quedando incompletas o con tarjetas
-             movidas). Con height:0 las imágenes siguen precargando igual,
-             pero nunca cambia de "position", así que el cálculo de hojas
-             al imprimir es estable. */
-          height: 0;
-          overflow: hidden;
+        /* Oculto SOLO en pantalla, nunca "reactivado" para impresión: antes
+           se escondía con una propiedad que se volvía a cambiar justo
+           @media print, y ese cambio de último momento es lo que
+           confundía al navegador al calcular varias hojas (con pocas
+           tarjetas salía bien, pero con selecciones grandes —"seleccionar
+           todo"— solo armaba la primera hoja y el resto se perdía). Al no
+           tocar nada en @media print, la impresión usa el acomodo normal
+           de siempre. Las imágenes igual precargan con display:none (el
+           navegador las pide igual, nomás no se dibujan en pantalla). */
+        @media screen {
+          .iq-hojas {
+            display: none;
+          }
         }
 
         .iq-tarjeta {
@@ -383,10 +452,6 @@ export default function ImprimirQr() {
           }
           .iq-pagina {
             background: #fff;
-          }
-          .iq-hojas {
-            height: auto;
-            overflow: visible;
           }
           .iq-hoja {
             display: grid;

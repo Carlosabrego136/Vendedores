@@ -549,17 +549,21 @@ export default function ImprimirCredenciales() {
           padding: 2px 8px;
         }
 
-        .ic-hojas {
-          /* Oculto en pantalla sin sacarlo del flujo normal del documento
-             (antes se usaba "position: absolute; left: -9999px", pero ese
-             cambio de "absolute" a "static" justo al imprimir podía hacer
-             que el navegador recalculara mal la paginación en celular —
-             eso explicaba que, al seleccionar varias hojas, saliera solo
-             una incompleta o con las tarjetas movidas). Con height:0 las
-             imágenes siguen precargando igual, pero nunca cambia de
-             "position", así que el cálculo de hojas al imprimir es estable. */
-          height: 0;
-          overflow: hidden;
+        /* Oculto SOLO en pantalla, nunca "reactivado" para impresión: antes
+           se escondía con una propiedad (primero "position", luego
+           "height") que se volvía a cambiar justo @media print, y ese
+           cambio de última hora es lo que confundía al navegador al
+           calcular varias hojas (con pocas tarjetas salía bien, pero con
+           selecciones grandes —"seleccionar todo"— solo armaba la primera
+           hoja y el resto se perdía o se encimaba). Al no tocar nada en
+           @media print, la impresión usa el acomodo normal de siempre,
+           sin ningún recálculo de último momento. Las imágenes igual
+           precargan con display:none (el navegador las pide igual, nomás
+           no se dibujan en pantalla). */
+        @media screen {
+          .ic-hojas {
+            display: none;
+          }
         }
 
         .ic-tarjeta {
@@ -717,10 +721,6 @@ export default function ImprimirCredenciales() {
           }
           .ic-pagina {
             background: #fff;
-          }
-          .ic-hojas {
-            height: auto;
-            overflow: visible;
           }
           .ic-hoja {
             display: grid;
