@@ -31,10 +31,16 @@ export default function ImprimirQr() {
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [seleccionados, setSeleccionados] = useState(() => new Set());
-  // Cuántas imágenes de QR ya terminaron de cargar (o fallaron) de las que
-  // se están mostrando ahorita, para no imprimir tarjetas en blanco porque
-  // la imagen no alcanzó a cargar a tiempo.
-  const [cargadas, setCargadas] = useState(0);
+  // Ids de las imágenes de QR que ya terminaron de cargar (o fallaron), de
+  // las que se están mostrando ahorita, para no imprimir tarjetas en blanco
+  // porque la imagen no alcanzó a cargar a tiempo. Este set SOLO CRECE: así
+  // si se cambia la selección (se marca/desmarca algún vendedor) no se
+  // pierde el avance de las imágenes que ya habían cargado antes — ese
+  // reinicio accidental era el bug que hacía que el contador se quedara
+  // pegado en "Cargando QR... (2/9)" aunque las imágenes ya hubieran
+  // cargado. El mismo bug que se corrigió antes en
+  // "Imprimir varias credenciales".
+  const [imagenesListas, setImagenesListas] = useState(() => new Set());
 
   useEffect(() => {
     async function cargar() {
@@ -65,9 +71,14 @@ export default function ImprimirQr() {
     return grupos;
   }, [tarjetas]);
 
-  useEffect(() => {
-    setCargadas(0);
-  }, [tarjetas]);
+  // Cuántas de las tarjetas seleccionadas ahorita ya tienen su imagen de QR
+  // lista. Se calcula siempre fresco a partir de "tarjetas" e
+  // "imagenesListas" (nunca se reinicia a mano), para que no se pierda el
+  // avance al cambiar la selección.
+  const cargadas = useMemo(
+    () => tarjetas.filter((v) => imagenesListas.has(v.id)).length,
+    [tarjetas, imagenesListas]
+  );
 
   const todasCargadas = tarjetas.length > 0 && cargadas >= tarjetas.length;
 
@@ -179,8 +190,12 @@ export default function ImprimirQr() {
                     src={`/api/qr/${v.id}`}
                     alt={`Código QR de ${nombreMostrado}`}
                     className="iq-imagen"
-                    onLoad={() => setCargadas((n) => n + 1)}
-                    onError={() => setCargadas((n) => n + 1)}
+                    onLoad={() =>
+                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)))
+                    }
+                    onError={() =>
+                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)))
+                    }
                   />
                   <p className="iq-codigo">{v.qr_codigo}</p>
                 </div>
