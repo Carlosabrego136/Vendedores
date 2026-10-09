@@ -7,13 +7,15 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 
-// Cuántas tarjetas caben en una hoja carta en tamaño credencial (2 columnas
-// x 4 filas con el tamaño de tarjeta usado abajo). Igual que en el proyecto
-// principal, partimos la lista nosotros mismos en grupos de este tamaño y
-// forzamos el salto de página — no podemos confiar en que el navegador
-// reparta bien las tarjetas en varias hojas (en Chrome Android se cortaba
-// todo después de la primera hoja).
-const TARJETAS_POR_HOJA = 8;
+// Cuántas tarjetas caben en una hoja carta en tamaño credencial (3 columnas
+// x 3 filas, igual que en "Imprimir varias credenciales" — la tarjeta de QR
+// usa exactamente el mismo tamaño y orientación que la credencial, así que
+// caben las mismas 9 por hoja). Igual que en el proyecto principal, partimos
+// la lista nosotros mismos en grupos de este tamaño y forzamos el salto de
+// página — no podemos confiar en que el navegador reparta bien las tarjetas
+// en varias hojas (en Chrome Android se cortaba todo después de la primera
+// hoja).
+const TARJETAS_POR_HOJA = 9;
 
 function formatoNumeroRegistro(n) {
   if (n === null || n === undefined) return null;
@@ -290,11 +292,14 @@ export default function ImprimirQr() {
         }
 
         .iq-tarjeta {
-          width: 85.6mm;
-          height: 54mm;
+          /* Mismo tamaño y orientación que la credencial (CR80 vertical:
+             54mm x 85.6mm), para que quepan las mismas 9 tarjetas por hoja
+             en el mismo acomodo de 3 columnas x 3 filas. */
+          width: 54mm;
+          height: 85.6mm;
           border: 1px solid #d1d5db;
           border-radius: 3mm;
-          padding: 3mm 4mm;
+          padding: 4mm 4mm;
           text-align: center;
           background: #fff;
           display: flex;
@@ -303,8 +308,8 @@ export default function ImprimirQr() {
           justify-content: center;
         }
         .iq-logo {
-          height: 9mm;
-          margin-bottom: 1mm;
+          height: 10mm;
+          margin-bottom: 2mm;
           border-radius: 2px;
         }
         .iq-etiqueta {
@@ -317,7 +322,7 @@ export default function ImprimirQr() {
         }
         .iq-nombre {
           margin: 0;
-          font-size: 10px;
+          font-size: 11px;
           font-weight: 800;
           color: #101a30;
           line-height: 1.15;
@@ -329,13 +334,13 @@ export default function ImprimirQr() {
           color: #33455f;
         }
         .iq-imagen {
-          width: 24mm;
-          max-width: 24mm;
-          margin: 0 auto;
+          width: 30mm;
+          max-width: 30mm;
+          margin: 3mm auto;
         }
         .iq-codigo {
           margin-top: 1mm;
-          font-size: 6px;
+          font-size: 6.5px;
           color: #6b7280;
           word-break: break-all;
         }
@@ -352,8 +357,8 @@ export default function ImprimirQr() {
           }
           .iq-hoja {
             display: grid;
-            grid-template-columns: repeat(2, 85.6mm);
-            grid-auto-rows: 54mm;
+            grid-template-columns: repeat(3, 54mm);
+            grid-auto-rows: 85.6mm;
             gap: 0;
             justify-content: center;
             page-break-after: always;
