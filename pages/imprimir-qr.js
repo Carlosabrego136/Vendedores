@@ -437,6 +437,17 @@ export default function ImprimirQr() {
         }
 
         @media print {
+          /* ESTA es la causa real de que solo saliera 1 hoja sin importar
+             cuántas se seleccionaran: styles/globals.css le pone
+             "height: 100%" a <html> y <body> (para que la pantalla normal
+             no haga scroll raro). Esa altura fija de "una sola pantalla"
+             también se aplicaba al imprimir, y el navegador recortaba todo
+             el documento a esa altura (una hoja) en vez de dejarlo crecer
+             para varias hojas. Aquí se anula nada más para imprimir. */
+          html,
+          body {
+            height: auto !important;
+          }
           /* Define explícitamente el tamaño de hoja y márgenes chicos: sin
              esto cada dispositivo/impresora usa sus propios márgenes por
              default (que varían bastante entre computadora y celular), y
