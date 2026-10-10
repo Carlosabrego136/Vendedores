@@ -522,7 +522,11 @@ export default function Vendedores() {
   const vendedoresFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return vendedores;
-    return vendedores.filter((v) => v.nombre.toLowerCase().includes(q));
+    return vendedores.filter(
+      (v) =>
+        v.nombre.toLowerCase().includes(q) ||
+        (v.facebook && v.facebook.toLowerCase().includes(q))
+    );
   }, [vendedores, busqueda]);
 
   const porVencerAgrupado = useMemo(() => {
