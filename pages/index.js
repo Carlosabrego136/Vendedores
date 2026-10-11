@@ -457,6 +457,7 @@ export default function Vendedores() {
     const encabezados = [
       'No. registro',
       'Nombre',
+      'Categoría',
       'Teléfono',
       'Estatus',
       'Fecha de nacimiento',
@@ -472,6 +473,7 @@ export default function Vendedores() {
     const filas = vendedoresFiltrados.map((v) => [
       formatoNumeroRegistro(v.numero_registro) || '',
       v.nombre || '',
+      v.categoria_nombre || '',
       v.telefono || '',
       labelEstatus(v.estatus),
       formatoFecha(v.fecha_nacimiento),
