@@ -60,6 +60,19 @@ export default function ImprimirCredenciales() {
   // botón de "Reintentar".
   const [erroresCarga, setErroresCarga] = useState(() => new Set());
   const [intentoFotos, setIntentoFotos] = useState(0);
+  // Mismo mecanismo de carga y reintento que las fotos de arriba, pero para
+  // los códigos QR que van en el reverso de la credencial (pedido de la
+  // clienta: imprimir el QR al reverso, ya que ella imprime a mano un lado
+  // y después voltea la hoja para pasarla de nuevo e imprimir el otro).
+  const [imagenesListasQr, setImagenesListasQr] = useState(() => new Set());
+  const [erroresCargaQr, setErroresCargaQr] = useState(() => new Set());
+  const [intentoQr, setIntentoQr] = useState(0);
+  // Controla si la hoja que se manda a imprimir es la de frentes (fotos) o
+  // la de reversos (QR, acomodados en espejo). "triggerImprimir" es el que
+  // realmente dispara window.print(), ya que el cambio de "modoReverso" se
+  // haya reflejado en pantalla (ver el useEffect más abajo).
+  const [modoReverso, setModoReverso] = useState(false);
+  const [triggerImprimir, setTriggerImprimir] = useState(0);
   // Diagnóstico temporal, visible en la misma pantalla (no hace falta
   // herramientas de desarrollador): va guardando un registro de lo que pasa
   // cada vez que se piden las fotos, para ver exactamente en qué paso se
@@ -121,6 +134,44 @@ export default function ImprimirCredenciales() {
     }
     return grupos;
   }, [tarjetas]);
+
+  // Acomoda cada hoja "en espejo" (columnas al revés dentro de cada fila),
+  // para la hoja de reversos: como la clienta voltea la hoja a mano (no usa
+  // doble cara automática), al voltear físicamente una hoja normal lo que
+  // queda a la izquierda pasa a la derecha. Con este espejo, el QR de cada
+  // tarjeta cae exactamente detrás de su credencial correspondiente.
+  function espejarGrupo(grupo) {
+    const filas = [];
+    for (let i = 0; i < grupo.length; i += 3) {
+      filas.push(grupo.slice(i, i + 3));
+    }
+    return filas.flatMap((fila) => [...fila].reverse());
+  }
+
+  const hojasReverso = useMemo(() => hojas.map((grupo) => espejarGrupo(grupo)), [hojas]);
+
+  // Mismo cálculo que "cargadas" (fotos), pero para los QR del reverso.
+  const cargadasQr = useMemo(
+    () => tarjetas.filter((v) => imagenesListasQr.has(v.id)).length,
+    [tarjetas, imagenesListasQr]
+  );
+  const todasCargadasQr = tarjetas.length > 0 && cargadasQr >= tarjetas.length;
+
+  const erroresVisiblesQr = useMemo(
+    () => tarjetas.filter((v) => erroresCargaQr.has(v.id)),
+    [tarjetas, erroresCargaQr]
+  );
+
+  function reintentarQrFallidos() {
+    if (erroresCargaQr.size === 0) return;
+    setImagenesListasQr((prev) => {
+      const siguiente = new Set(prev);
+      erroresCargaQr.forEach((id) => siguiente.delete(id));
+      return siguiente;
+    });
+    setErroresCargaQr(new Set());
+    setIntentoQr((n) => n + 1);
+  }
 
   // Se piden de un solo jalón (una sola consulta) las fotos de credencial
   // de todos los seleccionados que todavía no se tengan guardadas en
@@ -262,16 +313,35 @@ export default function ImprimirCredenciales() {
     setSeleccionados(new Set());
   }
 
-  function imprimir() {
+  function imprimirFrentes() {
     if (!todasCargadas) {
       alert('Espera un momento a que terminen de cargar todas las fotos antes de imprimir.');
       return;
     }
-    window.print();
+    setModoReverso(false);
+    setTriggerImprimir((n) => n + 1);
   }
 
+  function imprimirReversos() {
+    if (!todasCargadasQr) {
+      alert('Espera un momento a que terminen de cargar todos los códigos QR antes de imprimir.');
+      return;
+    }
+    setModoReverso(true);
+    setTriggerImprimir((n) => n + 1);
+  }
+
+  // Dispara la impresión ya después de que "modoReverso" se haya reflejado
+  // en pantalla (y por lo tanto en la hoja que el navegador va a imprimir),
+  // en vez de llamar window.print() en el mismo clic del botón.
+  useEffect(() => {
+    if (triggerImprimir === 0) return;
+    window.print();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerImprimir]);
+
   return (
-    <div className="ic-pagina">
+    <div className={`ic-pagina${modoReverso ? ' modo-reverso' : ''}`}>
       <Head>
         <title>Imprimir credenciales — Vendedores</title>
         <link rel="icon" href="/logo.jpg" />
@@ -296,14 +366,33 @@ export default function ImprimirCredenciales() {
           Quitar selección
         </button>
 
-        <button className="btn" onClick={imprimir} disabled={tarjetas.length === 0 || !todasCargadas}>
+        <button className="btn" onClick={imprimirFrentes} disabled={tarjetas.length === 0 || !todasCargadas}>
           {tarjetas.length === 0
-            ? 'Imprimir'
+            ? 'Imprimir frentes'
             : todasCargadas
-            ? `Imprimir (${tarjetas.length})`
+            ? `Imprimir frentes (${tarjetas.length})`
             : `Cargando fotos... (${cargadas}/${tarjetas.length})`}
         </button>
+        <button
+          className="btn secondary"
+          onClick={imprimirReversos}
+          disabled={tarjetas.length === 0 || !todasCargadasQr}
+        >
+          {tarjetas.length === 0
+            ? 'Imprimir reversos (QR)'
+            : todasCargadasQr
+            ? `Imprimir reversos (${tarjetas.length})`
+            : `Cargando QR... (${cargadasQr}/${tarjetas.length})`}
+        </button>
       </div>
+
+      {tarjetas.length > 0 && (
+        <p className="ic-instruccion no-imprimir">
+          Primero imprima los <strong>frentes</strong>. Después voltee esas mismas hojas a mano (como ya lo hace
+          normalmente) y vuelva a pasarlas por la impresora usando <strong>Imprimir reversos (QR)</strong> — el
+          código QR va a quedar alineado detrás de cada credencial.
+        </p>
+      )}
 
       {mostrarDebug && debugLog.length > 0 && (
         <div className="ic-debug no-imprimir">
@@ -320,6 +409,17 @@ export default function ImprimirCredenciales() {
             ? `No se pudo traer la foto de "${nombreParaTarjeta(erroresVisibles[0])}" (tardó demasiado o hubo un problema de conexión).`
             : `No se pudieron traer ${erroresVisibles.length} fotos (tardaron demasiado o hubo un problema de conexión).`}{' '}
           <button className="btn secondary ic-btn-reintentar" onClick={reintentarFotosFallidas}>
+            Reintentar
+          </button>
+        </p>
+      )}
+
+      {erroresVisiblesQr.length > 0 && (
+        <p className="ic-aviso ic-aviso-error no-imprimir">
+          {erroresVisiblesQr.length === 1
+            ? `No se pudo cargar el QR de "${nombreParaTarjeta(erroresVisiblesQr[0])}" (problema de conexión).`
+            : `No se pudieron cargar ${erroresVisiblesQr.length} códigos QR (problema de conexión).`}{' '}
+          <button className="btn secondary ic-btn-reintentar" onClick={reintentarQrFallidos}>
             Reintentar
           </button>
         </p>
@@ -410,6 +510,50 @@ export default function ImprimirCredenciales() {
         ))}
       </div>
 
+      {/* Hoja de reversos: mismas personas, mismo orden de hojas, pero cada
+          fila acomodada en espejo (ver espejarGrupo) para que el QR quede
+          alineado detrás de la credencial correcta al voltear la hoja a
+          mano. También se genera siempre, oculta en pantalla, para que los
+          QR puedan precargar de una vez y no haya que esperar al cambiar
+          de botón. */}
+      <div className="ic-hojas-reverso">
+        {hojasReverso.map((grupo, indiceHoja) => (
+          <div className="ic-hoja" key={indiceHoja}>
+            {grupo.map((v) => {
+              const nombreMostrado = nombreParaTarjeta(v);
+              const numero = formatoNumeroRegistro(v.numero_registro);
+              return (
+                <div className="ic-tarjeta-reverso" key={v.id}>
+                  <img src="/logo.jpg" alt="ENVIOS AYORA" className="ic-reverso-logo" />
+                  <p className="ic-reverso-etiqueta">Vendedor</p>
+                  <h1 className="ic-reverso-nombre">{nombreMostrado}</h1>
+                  {numero && <p className="ic-reverso-numero">No. de registro: {numero}</p>}
+                  <img
+                    src={`/api/qr/${v.id}${intentoQr > 0 ? `?r=${intentoQr}` : ''}`}
+                    alt={`Código QR de ${nombreMostrado}`}
+                    className="ic-reverso-imagen"
+                    onLoad={() => {
+                      setErroresCargaQr((prev) => {
+                        if (!prev.has(v.id)) return prev;
+                        const siguiente = new Set(prev);
+                        siguiente.delete(v.id);
+                        return siguiente;
+                      });
+                      setImagenesListasQr((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+                    }}
+                    onError={() => {
+                      setErroresCargaQr((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+                      setImagenesListasQr((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+                    }}
+                  />
+                  <p className="ic-reverso-codigo">{v.qr_codigo}</p>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
       <style jsx global>{`
         body {
           background: #fff !important;
@@ -464,6 +608,14 @@ export default function ImprimirCredenciales() {
           margin: 12px 16px 0;
           background: #fef3c7;
           color: #92400e;
+          font-size: 13px;
+          padding: 10px 14px;
+          border-radius: 10px;
+        }
+        .ic-instruccion {
+          margin: 12px 16px 0;
+          background: #eef2ff;
+          color: #1d3a63;
           font-size: 13px;
           padding: 10px 14px;
           border-radius: 10px;
@@ -565,7 +717,8 @@ export default function ImprimirCredenciales() {
            precargan con display:none (el navegador las pide igual, nomás
            no se dibujan en pantalla). */
         @media screen {
-          .ic-hojas {
+          .ic-hojas,
+          .ic-hojas-reverso {
             display: none;
           }
         }
@@ -708,6 +861,55 @@ export default function ImprimirCredenciales() {
           text-align: center;
         }
 
+        .ic-tarjeta-reverso {
+          width: 54mm;
+          height: 85.6mm;
+          padding: 4mm 4mm;
+          text-align: center;
+          background: #fff;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+        }
+        .ic-reverso-logo {
+          height: 10mm;
+          margin-bottom: 2mm;
+          border-radius: 2px;
+        }
+        .ic-reverso-etiqueta {
+          margin: 0;
+          font-size: 6.5px;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #6b7280;
+          font-weight: 700;
+        }
+        .ic-reverso-nombre {
+          margin: 0;
+          font-size: 11px;
+          font-weight: 800;
+          color: #101a30;
+          line-height: 1.15;
+        }
+        .ic-reverso-numero {
+          margin: 0 0 1mm;
+          font-size: 7px;
+          font-weight: 700;
+          color: #33455f;
+        }
+        .ic-reverso-imagen {
+          width: 30mm;
+          max-width: 30mm;
+          margin: 3mm auto;
+        }
+        .ic-reverso-codigo {
+          margin-top: 1mm;
+          font-size: 6.5px;
+          color: #6b7280;
+          word-break: break-all;
+        }
+
         @media print {
           /* ESTA es la causa real de que solo saliera 1 hoja sin importar
              cuántas se seleccionaran: styles/globals.css le pone
@@ -739,6 +941,19 @@ export default function ImprimirCredenciales() {
           .ic-pagina {
             background: #fff;
           }
+          /* Por default se imprime la hoja de frentes y se oculta la de
+             reversos; con la clase "modo-reverso" (puesta justo antes de
+             llamar a imprimir) es al revés. Así cada botón imprime
+             solamente lo que le corresponde. */
+          .ic-hojas-reverso {
+            display: none;
+          }
+          .modo-reverso .ic-hojas {
+            display: none;
+          }
+          .modo-reverso .ic-hojas-reverso {
+            display: block;
+          }
           .ic-hoja {
             display: grid;
             grid-template-columns: repeat(3, 54mm);
@@ -753,6 +968,10 @@ export default function ImprimirCredenciales() {
             break-after: auto;
           }
           .ic-tarjeta {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .ic-tarjeta-reverso {
             page-break-inside: avoid;
             break-inside: avoid;
           }
