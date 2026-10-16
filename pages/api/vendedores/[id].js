@@ -1,5 +1,17 @@
 const { query } = require('../../../lib/db');
 
+// Mismo motivo que en /api/vendedores.js: este endpoint recibe las fotos de
+// INE y credencial al editar un vendedor, y el límite normal de 1mb se podía
+// quedar corto con las dos fotos juntas, rechazando el envío completo sin
+// aviso.
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '8mb',
+    },
+  },
+};
+
 function calcularVencimiento(fechaIngresoStr) {
   const d = new Date(`${fechaIngresoStr}T00:00:00Z`);
   d.setUTCFullYear(d.getUTCFullYear() + 1);

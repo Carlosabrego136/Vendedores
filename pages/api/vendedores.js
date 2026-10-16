@@ -1,6 +1,21 @@
 const { query } = require('../../lib/db');
 const { nanoid } = require('nanoid');
 
+// El límite normal de Next.js para el cuerpo de una petición es 1mb. Este
+// formulario manda dos fotos (INE y credencial) juntas como datos dentro del
+// mismo envío, y esas dos fotos combinadas podían superar ese 1mb con
+// celulares que toman fotos de buena calidad — el servidor rechazaba el
+// envío completo (incluyendo nombre, teléfono, etc., no solo la foto) sin
+// que la app avisara nada, así que el registro se perdía en silencio. Se
+// sube el límite para que quepan las fotos con holgura.
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '8mb',
+    },
+  },
+};
+
 // Calcula la fecha de vencimiento como 1 año exacto después del ingreso.
 // Se recalcula sola siempre que se registra o se cambia la fecha de ingreso —
 // no es un campo que la clienta tenga que llenar a mano.

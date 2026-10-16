@@ -379,11 +379,27 @@ export default function Vendedores() {
     }
     const { categoria_texto, ...resto } = datos;
     const categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
-    await fetch('/api/vendedores', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...resto, categoria_id }),
-    });
+    // Antes no se revisaba si esta petición realmente tuvo éxito: si fallaba
+    // (por ejemplo, por el límite de tamaño con las fotos, o por falta de
+    // conexión), el formulario se cerraba igual, como si se hubiera
+    // guardado, y el registro se perdía sin ningún aviso. Ahora, si algo
+    // falla, se avisa y el formulario se queda abierto con los datos ya
+    // llenados, para no tener que volver a capturar todo.
+    let res;
+    try {
+      res = await fetch('/api/vendedores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...resto, categoria_id }),
+      });
+    } catch (err) {
+      alert('No se pudo guardar: parece que se perdió la conexión. Revisa tu internet e intenta de nuevo (tus datos siguen aquí, no se perdieron).');
+      return;
+    }
+    if (!res.ok) {
+      alert('No se pudo guardar el registro. Intenta de nuevo (tus datos siguen aquí, no se perdieron); si sigue fallando, avísame.');
+      return;
+    }
     setMostrarAlta(false);
     cargar();
     cargarPorVencer();
@@ -414,11 +430,23 @@ export default function Vendedores() {
   async function guardarEdicion(id, datos) {
     const { categoria_texto, ...resto } = datos;
     const categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
-    await fetch(`/api/vendedores/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...resto, categoria_id }),
-    });
+    // Mismo motivo que en "crear": antes no se revisaba si la edición
+    // realmente se guardó, así que un fallo quedaba invisible.
+    let res;
+    try {
+      res = await fetch(`/api/vendedores/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...resto, categoria_id }),
+      });
+    } catch (err) {
+      alert('No se pudo guardar: parece que se perdió la conexión. Revisa tu internet e intenta de nuevo (tus cambios siguen aquí, no se perdieron).');
+      return;
+    }
+    if (!res.ok) {
+      alert('No se pudieron guardar los cambios. Intenta de nuevo (tus cambios siguen aquí, no se perdieron); si sigue fallando, avísame.');
+      return;
+    }
     setEditandoId(null);
     cargar();
     cargarPorVencer();
