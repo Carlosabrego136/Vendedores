@@ -26,6 +26,24 @@ function nombreParaTarjeta(v) {
   return v.facebook && v.facebook.trim() ? v.facebook.trim() : v.nombre;
 }
 
+// Convierte la imagen del QR (que llega como datos binarios) a una cadena
+// "data:image/png;base64,..." que ya trae la imagen completa incrustada.
+function blobADataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(lector.result);
+    lector.onerror = () => reject(lector.error);
+    lector.readAsDataURL(blob);
+  });
+}
+
+// Cuántos QR se piden al mismo tiempo cuando se selecciona a mucha gente de
+// un jalón — antes el navegador pedía todos los QR seleccionados al mismo
+// tiempo (un <img> por cada uno), lo que podía saturar una conexión ya
+// inestable. Pedirlos de a poquitos (en vez de todos de golpe) es más
+// amable con una señal débil.
+const CONCURRENCIA_MAXIMA = 4;
+
 export default function ImprimirQr() {
   const [vendedores, setVendedores] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -46,6 +64,18 @@ export default function ImprimirQr() {
   // "Reintentar" en vez de dejarlo así nada más.
   const [erroresCarga, setErroresCarga] = useState(() => new Set());
   const [intentoCarga, setIntentoCarga] = useState(0);
+  // Cada código QR ya descargado y convertido a "data:image/png;base64,...".
+  // Antes cada tarjeta traía su QR con un <img src="/api/qr/...">, es decir,
+  // una dirección que el navegador (o, al imprimir, el propio sistema
+  // Android) podía volver a pedir por su cuenta en cualquier momento — y si
+  // la conexión fallaba justo al generar la vista previa de impresión, esa
+  // tarjeta salía con el QR roto, aunque en pantalla sí se hubiera visto
+  // bien (esto es justo lo que reportó la clienta). Ahora el QR se descarga
+  // una sola vez aquí y se guarda ya incrustado en la propia página, así
+  // que al momento de imprimir ya no hace falta ninguna conexión: la
+  // imagen ya está completa. null = se intentó y falló; ausente = todavía
+  // no se ha intentado.
+  const [qrDatos, setQrDatos] = useState({});
 
   useEffect(() => {
     async function cargar() {
@@ -71,6 +101,61 @@ export default function ImprimirQr() {
     () => vendedores.filter((v) => seleccionados.has(v.id)),
     [vendedores, seleccionados]
   );
+
+  // Descarga (en paralelo, pero limitado) el QR de cada tarjeta seleccionada
+  // que todavía no se tenga guardado. Límite de 20 segundos por QR para que
+  // una conexión muy lenta no se quede esperando para siempre.
+  useEffect(() => {
+    let cancelado = false;
+    const faltantes = tarjetas.filter((v) => !(v.id in qrDatos));
+    if (faltantes.length === 0) return;
+
+    async function cargarUno(v) {
+      const controlador = new AbortController();
+      const limite = setTimeout(() => controlador.abort(), 20000);
+      try {
+        const res = await fetch(`/api/qr/${v.id}`, { signal: controlador.signal, cache: 'no-store' });
+        if (!res.ok) throw new Error('Respuesta no exitosa del servidor');
+        const blob = await res.blob();
+        const dataUrl = await blobADataUrl(blob);
+        clearTimeout(limite);
+        if (cancelado) return;
+        setQrDatos((prev) => ({ ...prev, [v.id]: dataUrl }));
+        setErroresCarga((prev) => {
+          if (!prev.has(v.id)) return prev;
+          const siguiente = new Set(prev);
+          siguiente.delete(v.id);
+          return siguiente;
+        });
+        setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+      } catch (err) {
+        clearTimeout(limite);
+        if (cancelado) return;
+        setQrDatos((prev) => (v.id in prev ? prev : { ...prev, [v.id]: null }));
+        setErroresCarga((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+        // Igual se marca como "lista" para no dejar el botón de imprimir
+        // pegado para siempre — si no se reintenta, esa tarjeta sale sin QR.
+        setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
+      }
+    }
+
+    let indice = 0;
+    async function procesarSiguiente() {
+      if (cancelado) return;
+      const i = indice++;
+      if (i >= faltantes.length) return;
+      await cargarUno(faltantes[i]);
+      await procesarSiguiente();
+    }
+    for (let i = 0; i < Math.min(CONCURRENCIA_MAXIMA, faltantes.length); i++) {
+      procesarSiguiente();
+    }
+
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tarjetas, intentoCarga]);
 
   const hojas = useMemo(() => {
     const grupos = [];
@@ -103,6 +188,13 @@ export default function ImprimirQr() {
   // intento fallido).
   function reintentarFallidos() {
     if (erroresCarga.size === 0) return;
+    setQrDatos((prev) => {
+      const siguiente = { ...prev };
+      erroresCarga.forEach((id) => {
+        delete siguiente[id];
+      });
+      return siguiente;
+    });
     setImagenesListas((prev) => {
       const siguiente = new Set(prev);
       erroresCarga.forEach((id) => siguiente.delete(id));
@@ -227,27 +319,15 @@ export default function ImprimirQr() {
                   <p className="iq-etiqueta">Vendedor</p>
                   <h1 className="iq-nombre">{nombreMostrado}</h1>
                   {numero && <p className="iq-numero">No. de registro: {numero}</p>}
-                  <img
-                    src={`/api/qr/${v.id}${intentoCarga > 0 ? `?r=${intentoCarga}` : ''}`}
-                    alt={`Código QR de ${nombreMostrado}`}
-                    className="iq-imagen"
-                    onLoad={() => {
-                      setErroresCarga((prev) => {
-                        if (!prev.has(v.id)) return prev;
-                        const siguiente = new Set(prev);
-                        siguiente.delete(v.id);
-                        return siguiente;
-                      });
-                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
-                    }}
-                    onError={() => {
-                      setErroresCarga((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
-                      // Igual se marca como "lista" para no dejar el botón de
-                      // imprimir pegado para siempre — si no se reintenta, esa
-                      // tarjeta sale con el QR en blanco.
-                      setImagenesListas((prev) => (prev.has(v.id) ? prev : new Set(prev).add(v.id)));
-                    }}
-                  />
+                  {qrDatos[v.id] ? (
+                    <img
+                      src={qrDatos[v.id]}
+                      alt={`Código QR de ${nombreMostrado}`}
+                      className="iq-imagen"
+                    />
+                  ) : (
+                    <div className="iq-imagen-vacia" />
+                  )}
                   <p className="iq-codigo">{v.qr_codigo}</p>
                 </div>
               );
@@ -432,6 +512,18 @@ export default function ImprimirQr() {
           width: 30mm;
           max-width: 30mm;
           margin: 3mm auto;
+        }
+        .iq-imagen-vacia {
+          width: 30mm;
+          height: 30mm;
+          margin: 3mm auto;
+          background: repeating-linear-gradient(
+            45deg,
+            #e5e7eb,
+            #e5e7eb 6px,
+            #f3f4f6 6px,
+            #f3f4f6 12px
+          );
         }
         .iq-codigo {
           margin-top: 1mm;
