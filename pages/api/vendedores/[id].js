@@ -71,47 +71,60 @@ export default async function handler(req, res) {
     const ineFotoParam = ine_foto || null;
     const fotoCredencialParam = foto_credencial || null;
 
-    const { rows } = await query(
-      `UPDATE vendedores
-       SET nombre = COALESCE($1, nombre),
-           categoria_id = CASE WHEN $2::text = '__null__' THEN NULL ELSE COALESCE($2::uuid, categoria_id) END,
-           activo = COALESCE($3, COALESCE($4, activo)),
-           telefono = COALESCE($5, telefono),
-           fecha_nacimiento = COALESCE($6::date, fecha_nacimiento),
-           fecha_ingreso = COALESCE($7::date, fecha_ingreso),
-           fecha_vencimiento = COALESCE($8::date, fecha_vencimiento),
-           facebook = COALESCE($9, facebook),
-           referencia1_nombre = COALESCE($10, referencia1_nombre),
-           referencia1_telefono = COALESCE($11, referencia1_telefono),
-           referencia2_nombre = COALESCE($12, referencia2_nombre),
-           referencia2_telefono = COALESCE($13, referencia2_telefono),
-           ine_foto = COALESCE($14, ine_foto),
-           estatus = COALESCE($15, estatus),
-           foto_credencial = COALESCE($16, foto_credencial)
-       WHERE id = $17
-       RETURNING id, nombre, qr_codigo, estatus, activo, fecha_ingreso, fecha_vencimiento`,
-      [
-        nombre ?? null,
-        categoriaIdParam,
-        activo ?? null,
-        activoDesdeEstatus,
-        telefono ?? null,
-        fecha_nacimiento ?? null,
-        fecha_ingreso ?? null,
-        vencimiento,
-        facebook ?? null,
-        referencia1_nombre ?? null,
-        referencia1_telefono ?? null,
-        referencia2_nombre ?? null,
-        referencia2_telefono ?? null,
-        ineFotoParam,
-        estatus ?? null,
-        fotoCredencialParam,
-        id,
-      ]
-    );
-    if (rows.length === 0) return res.status(404).json({ error: 'Vendedor no encontrado' });
-    return res.status(200).json(rows[0]);
+    try {
+      const { rows } = await query(
+        `UPDATE vendedores
+         SET nombre = COALESCE($1, nombre),
+             categoria_id = CASE WHEN $2::text = '__null__' THEN NULL ELSE COALESCE($2::uuid, categoria_id) END,
+             activo = COALESCE($3, COALESCE($4, activo)),
+             telefono = COALESCE($5, telefono),
+             fecha_nacimiento = COALESCE($6::date, fecha_nacimiento),
+             fecha_ingreso = COALESCE($7::date, fecha_ingreso),
+             fecha_vencimiento = COALESCE($8::date, fecha_vencimiento),
+             facebook = COALESCE($9, facebook),
+             referencia1_nombre = COALESCE($10, referencia1_nombre),
+             referencia1_telefono = COALESCE($11, referencia1_telefono),
+             referencia2_nombre = COALESCE($12, referencia2_nombre),
+             referencia2_telefono = COALESCE($13, referencia2_telefono),
+             ine_foto = COALESCE($14, ine_foto),
+             estatus = COALESCE($15, estatus),
+             foto_credencial = COALESCE($16, foto_credencial)
+         WHERE id = $17
+         RETURNING id, nombre, qr_codigo, estatus, activo, fecha_ingreso, fecha_vencimiento`,
+        [
+          nombre ?? null,
+          categoriaIdParam,
+          activo ?? null,
+          activoDesdeEstatus,
+          telefono ?? null,
+          fecha_nacimiento ?? null,
+          fecha_ingreso ?? null,
+          vencimiento,
+          facebook ?? null,
+          referencia1_nombre ?? null,
+          referencia1_telefono ?? null,
+          referencia2_nombre ?? null,
+          referencia2_telefono ?? null,
+          ineFotoParam,
+          estatus ?? null,
+          fotoCredencialParam,
+          id,
+        ]
+      );
+      if (rows.length === 0) return res.status(404).json({ error: 'Vendedor no encontrado' });
+      return res.status(200).json(rows[0]);
+    } catch (err) {
+      // 22P02 = valor con formato inválido (p. ej. categoria_id no es un uuid válido)
+      if (err.code === '22P02') {
+        return res.status(400).json({ error: 'Alguno de los datos enviados tiene un formato inválido' });
+      }
+      // 23503 = violación de llave foránea (categoria_id no existe)
+      if (err.code === '23503') {
+        return res.status(400).json({ error: 'La categoría seleccionada no existe' });
+      }
+      console.error(err);
+      return res.status(500).json({ error: 'Error al actualizar el vendedor' });
+    }
   }
 
   if (req.method === 'DELETE') {

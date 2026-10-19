@@ -75,41 +75,54 @@ export default async function handler(req, res) {
     const vencimiento = calcularVencimiento(ingreso);
     const estatusFinal = estatus || 'activo';
 
-    // El número de registro se asigna solo, de forma consecutiva (1, 2, 3...),
-    // tomando el máximo ya usado + 1 — así nunca hay que capturarlo a mano.
-    const { rows } = await query(
-      `WITH siguiente AS (
-         SELECT COALESCE(MAX(numero_registro), 0) + 1 AS n FROM vendedores
-       )
-       INSERT INTO vendedores
-         (nombre, categoria_id, qr_codigo, telefono, fecha_nacimiento,
-          fecha_ingreso, fecha_vencimiento, facebook,
-          referencia1_nombre, referencia1_telefono,
-          referencia2_nombre, referencia2_telefono, ine_foto, estatus, activo,
-          foto_credencial, numero_registro)
-       SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, siguiente.n
-       FROM siguiente
-       RETURNING id, nombre, qr_codigo, estatus, fecha_ingreso, fecha_vencimiento, numero_registro`,
-      [
-        nombre,
-        categoria_id || null,
-        qr_codigo,
-        telefono || null,
-        fecha_nacimiento || null,
-        ingreso,
-        vencimiento,
-        facebook || null,
-        referencia1_nombre || null,
-        referencia1_telefono || null,
-        referencia2_nombre || null,
-        referencia2_telefono || null,
-        ine_foto || null,
-        estatusFinal,
-        estatusFinal === 'activo',
-        foto_credencial || null,
-      ]
-    );
-    return res.status(201).json(rows[0]);
+    try {
+      // El número de registro se asigna solo, de forma consecutiva (1, 2, 3...),
+      // tomando el máximo ya usado + 1 — así nunca hay que capturarlo a mano.
+      const { rows } = await query(
+        `WITH siguiente AS (
+           SELECT COALESCE(MAX(numero_registro), 0) + 1 AS n FROM vendedores
+         )
+         INSERT INTO vendedores
+           (nombre, categoria_id, qr_codigo, telefono, fecha_nacimiento,
+            fecha_ingreso, fecha_vencimiento, facebook,
+            referencia1_nombre, referencia1_telefono,
+            referencia2_nombre, referencia2_telefono, ine_foto, estatus, activo,
+            foto_credencial, numero_registro)
+         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, siguiente.n
+         FROM siguiente
+         RETURNING id, nombre, qr_codigo, estatus, fecha_ingreso, fecha_vencimiento, numero_registro`,
+        [
+          nombre,
+          categoria_id || null,
+          qr_codigo,
+          telefono || null,
+          fecha_nacimiento || null,
+          ingreso,
+          vencimiento,
+          facebook || null,
+          referencia1_nombre || null,
+          referencia1_telefono || null,
+          referencia2_nombre || null,
+          referencia2_telefono || null,
+          ine_foto || null,
+          estatusFinal,
+          estatusFinal === 'activo',
+          foto_credencial || null,
+        ]
+      );
+      return res.status(201).json(rows[0]);
+    } catch (err) {
+      // 22P02 = valor con formato inválido (p. ej. categoria_id no es un uuid válido)
+      if (err.code === '22P02') {
+        return res.status(400).json({ error: 'Alguno de los datos enviados tiene un formato inválido' });
+      }
+      // 23503 = violación de llave foránea (categoria_id no existe)
+      if (err.code === '23503') {
+        return res.status(400).json({ error: 'La categoría seleccionada no existe' });
+      }
+      console.error(err);
+      return res.status(500).json({ error: 'Error al registrar el vendedor' });
+    }
   }
 
   res.status(405).end();
