@@ -18,6 +18,19 @@ function calcularVencimiento(fechaIngresoStr) {
   return d.toISOString().slice(0, 10);
 }
 
+// Devuelve la fecha como 'YYYY-MM-DD', null si viene vacía/no se mandó, o
+// false si trae algo que no es una fecha válida.
+function normalizarFecha(valor) {
+  if (valor === undefined || valor === null) return null;
+  const s = String(valor).trim();
+  if (s === '') return null;
+  const base = s.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return false;
+  const d = new Date(`${base}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== base) return false;
+  return base;
+}
+
 export default async function handler(req, res) {
   const { id } = req.query;
 
@@ -47,9 +60,20 @@ export default async function handler(req, res) {
       estatus,
     } = req.body;
 
+    // El formulario manda las fechas como cadena vacía ("") cuando el campo
+    // está en blanco (por ejemplo, un vendedor sin fecha de nacimiento
+    // capturada). Postgres no acepta "" como fecha y rechazaba TODA la
+    // edición (por eso "no se guardaban los cambios"). Una fecha vacía se
+    // trata igual que si no se hubiera mandado: no se toca lo ya guardado.
+    const fechaNacimientoParam = normalizarFecha(fecha_nacimiento);
+    const fechaIngresoParam = normalizarFecha(fecha_ingreso);
+    if (fechaNacimientoParam === false || fechaIngresoParam === false) {
+      return res.status(400).json({ error: 'Una de las fechas no tiene un formato válido' });
+    }
+
     // La fecha de vencimiento se recalcula sola si cambia la fecha de
     // ingreso — nunca se edita a mano.
-    const vencimiento = fecha_ingreso ? calcularVencimiento(fecha_ingreso) : null;
+    const vencimiento = fechaIngresoParam ? calcularVencimiento(fechaIngresoParam) : null;
 
     // Si se manda un estatus nuevo, mantenemos sincronizado el booleano
     // "activo" que ya usa el panel administrativo general (activo = true
@@ -97,8 +121,8 @@ export default async function handler(req, res) {
           activo ?? null,
           activoDesdeEstatus,
           telefono ?? null,
-          fecha_nacimiento ?? null,
-          fecha_ingreso ?? null,
+          fechaNacimientoParam,
+          fechaIngresoParam,
           vencimiento,
           facebook ?? null,
           referencia1_nombre ?? null,
@@ -115,7 +139,8 @@ export default async function handler(req, res) {
       return res.status(200).json(rows[0]);
     } catch (err) {
       // 22P02 = valor con formato inválido (p. ej. categoria_id no es un uuid válido)
-      if (err.code === '22P02') {
+      // 22007 / 22008 = fecha con formato inválido o fuera de rango
+      if (err.code === '22P02' || err.code === '22007' || err.code === '22008') {
         return res.status(400).json({ error: 'Alguno de los datos enviados tiene un formato inválido' });
       }
       // 23503 = violación de llave foránea (categoria_id no existe)

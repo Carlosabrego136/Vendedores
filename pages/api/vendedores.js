@@ -113,7 +113,8 @@ export default async function handler(req, res) {
       return res.status(201).json(rows[0]);
     } catch (err) {
       // 22P02 = valor con formato inválido (p. ej. categoria_id no es un uuid válido)
-      if (err.code === '22P02') {
+      // 22007 / 22008 = fecha con formato inválido o fuera de rango
+      if (err.code === '22P02' || err.code === '22007' || err.code === '22008') {
         return res.status(400).json({ error: 'Alguno de los datos enviados tiene un formato inválido' });
       }
       // 23503 = violación de llave foránea (categoria_id no existe)

@@ -397,7 +397,8 @@ export default function Vendedores() {
       return;
     }
     if (!res.ok) {
-      alert('No se pudo guardar el registro. Intenta de nuevo (tus datos siguen aquí, no se perdieron); si sigue fallando, avísame.');
+      const data = await res.json().catch(() => ({}));
+      alert(`No se pudo guardar el registro${data.error ? `: ${data.error}` : ''}. Intenta de nuevo (tus datos siguen aquí, no se perdieron); si sigue fallando, avísame.`);
       return;
     }
     setMostrarAlta(false);
@@ -444,7 +445,10 @@ export default function Vendedores() {
       return;
     }
     if (!res.ok) {
-      alert('No se pudieron guardar los cambios. Intenta de nuevo (tus cambios siguen aquí, no se perdieron); si sigue fallando, avísame.');
+      // Se muestra el motivo real que manda el servidor (si lo hay), para
+      // saber qué falló en vez de un mensaje genérico.
+      const data = await res.json().catch(() => ({}));
+      alert(`No se pudieron guardar los cambios${data.error ? `: ${data.error}` : ''}. Intenta de nuevo (tus cambios siguen aquí, no se perdieron); si sigue fallando, avísame.`);
       return;
     }
     setEditandoId(null);
