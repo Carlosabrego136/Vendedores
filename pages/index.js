@@ -94,7 +94,10 @@ async function resolverCategoriaId(textoCategoria, categoriasActuales, onNuevaCa
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clave, nombre: texto }),
   });
-  if (!res.ok) return null;
+  // Si falla al crear/buscar la categoría se avisa con un error, en vez de
+  // devolver null: null significa "sin categoría" y, al guardar, le borraba
+  // a un vendedor la categoría que ya tenía sin que nadie se diera cuenta.
+  if (!res.ok) throw new Error('categoria');
   const nueva = await res.json();
   if (onNuevaCategoria) onNuevaCategoria(nueva);
   return nueva.id;
@@ -378,7 +381,13 @@ export default function Vendedores() {
       return;
     }
     const { categoria_texto, ...resto } = datos;
-    const categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
+    let categoria_id;
+    try {
+      categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
+    } catch (err) {
+      alert('No se pudo guardar la categoría en este momento. Intenta de nuevo (tus datos siguen aquí, no se perdieron).');
+      return;
+    }
     // Antes no se revisaba si esta petición realmente tuvo éxito: si fallaba
     // (por ejemplo, por el límite de tamaño con las fotos, o por falta de
     // conexión), el formulario se cerraba igual, como si se hubiera
@@ -430,7 +439,13 @@ export default function Vendedores() {
 
   async function guardarEdicion(id, datos) {
     const { categoria_texto, ...resto } = datos;
-    const categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
+    let categoria_id;
+    try {
+      categoria_id = await resolverCategoriaId(categoria_texto, categorias, agregarCategoriaLocal);
+    } catch (err) {
+      alert('No se pudo guardar la categoría en este momento. Intenta de nuevo (tus cambios siguen aquí, no se perdieron).');
+      return;
+    }
     // Mismo motivo que en "crear": antes no se revisaba si la edición
     // realmente se guardó, así que un fallo quedaba invisible.
     let res;
@@ -451,6 +466,20 @@ export default function Vendedores() {
       alert(`No se pudieron guardar los cambios${data.error ? `: ${data.error}` : ''}. Intenta de nuevo (tus cambios siguen aquí, no se perdieron); si sigue fallando, avísame.`);
       return;
     }
+    const guardado = await res.json().catch(() => ({}));
+    // Confirmación real: si se mandó una foto de credencial y el servidor
+    // dice que no quedó guardada, se avisa en vez de cerrar como si nada.
+    if (resto.foto_credencial && guardado.tiene_foto_credencial === false) {
+      alert('La foto de la credencial no quedó guardada. Intenta de nuevo (tus cambios siguen aquí, no se perdieron).');
+      return;
+    }
+    // Se olvidan las fotos que se habían traído para este vendedor, para que
+    // la próxima vez que se abra su edición se vuelvan a leer ya actualizadas.
+    setFotosEdicion((prev) => {
+      const copia = { ...prev };
+      delete copia[id];
+      return copia;
+    });
     setEditandoId(null);
     cargar();
     cargarPorVencer();

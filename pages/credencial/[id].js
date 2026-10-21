@@ -30,7 +30,13 @@ function formatoNumeroRegistro(n) {
 
 export async function getServerSideProps({ params }) {
   const { id } = params;
-  const { rows } = await query('SELECT * FROM vendedores WHERE id = $1', [id]);
+  // Solo las columnas que usa la credencial: antes traía todo (incluida la
+  // foto de la INE, que aquí no se usa) y cargaba la base de datos de más.
+  const { rows } = await query(
+    `SELECT nombre, facebook, numero_registro, fecha_vencimiento, foto_credencial
+     FROM vendedores WHERE id = $1`,
+    [id]
+  );
   if (rows.length === 0) return { notFound: true };
 
   const v = rows[0];

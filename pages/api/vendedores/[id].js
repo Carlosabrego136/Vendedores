@@ -114,7 +114,9 @@ export default async function handler(req, res) {
              estatus = COALESCE($15, estatus),
              foto_credencial = COALESCE($16, foto_credencial)
          WHERE id = $17
-         RETURNING id, nombre, qr_codigo, estatus, activo, fecha_ingreso, fecha_vencimiento`,
+         RETURNING id, nombre, qr_codigo, estatus, activo, fecha_ingreso, fecha_vencimiento,
+                   (foto_credencial IS NOT NULL) AS tiene_foto_credencial,
+                   (ine_foto IS NOT NULL) AS tiene_ine`,
         [
           nombre ?? null,
           categoriaIdParam,

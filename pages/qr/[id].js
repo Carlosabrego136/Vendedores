@@ -8,7 +8,11 @@ import { query } from '../../lib/db';
 export async function getServerSideProps({ params }) {
   const { id } = params;
 
-  const { rows } = await query('SELECT * FROM vendedores WHERE id = $1', [id]);
+  // Solo lo que usa esta página (sin las fotos pesadas).
+  const { rows } = await query(
+    'SELECT qr_codigo, numero_registro, facebook, nombre FROM vendedores WHERE id = $1',
+    [id]
+  );
 
   if (rows.length === 0) {
     return { notFound: true };
