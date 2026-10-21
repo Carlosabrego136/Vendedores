@@ -8,6 +8,14 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// En el pase de lista solo se debe ver el nombre de Facebook del vendedor (y
+// si no tiene, su nombre real como respaldo) — por seguridad, para no exponer
+// el nombre real de las personas. Es la misma regla que ya usan las listas,
+// el QR y la credencial.
+function nombreMostrar(v) {
+  return v.facebook && v.facebook.trim() ? v.facebook.trim() : v.nombre;
+}
+
 function diasEntre(fechaA, fechaB) {
   const a = new Date(`${fechaA}T00:00:00Z`);
   const b = new Date(`${fechaB}T00:00:00Z`);
@@ -22,7 +30,7 @@ export default async function handler(req, res) {
     if (!qr_codigo) return res.status(400).json({ error: 'qr_codigo es requerido' });
 
     const { rows: vendedores } = await query(
-      'SELECT id, nombre, estatus, fecha_vencimiento FROM vendedores WHERE qr_codigo = $1',
+      'SELECT id, nombre, facebook, estatus, fecha_vencimiento FROM vendedores WHERE qr_codigo = $1',
       [qr_codigo]
     );
     if (vendedores.length === 0) {
@@ -50,7 +58,9 @@ export default async function handler(req, res) {
       yaEstabaRegistrado,
       vendedor: {
         id: vendedor.id,
-        nombre: vendedor.nombre,
+        // Se manda solo el nombre a mostrar (Facebook, o el real si no tiene);
+        // el nombre real ya no viaja en esta respuesta.
+        nombre: nombreMostrar(vendedor),
         estatus: vendedor.estatus,
         fecha_vencimiento: vendedor.fecha_vencimiento,
       },
@@ -64,10 +74,11 @@ export default async function handler(req, res) {
     // asistido, agrupado por fecha (recuerda: solo se escanea los viernes,
     // así que cada fecha distinta ya es, en la práctica, una semana distinta).
     const { rows } = await query(
-      `SELECT a.fecha, a.creado_en, v.id AS vendedor_id, v.nombre AS vendedor_nombre
+      `SELECT a.fecha, a.creado_en, v.id AS vendedor_id,
+              COALESCE(NULLIF(TRIM(v.facebook), ''), v.nombre) AS vendedor_nombre
        FROM asistencias_vendedores a
        JOIN vendedores v ON v.id = a.vendedor_id
-       ORDER BY a.fecha DESC, v.nombre ASC
+       ORDER BY a.fecha DESC, COALESCE(NULLIF(TRIM(v.facebook), ''), v.nombre) ASC
        LIMIT 500`
     );
     return res.status(200).json(rows);
