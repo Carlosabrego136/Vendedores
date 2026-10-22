@@ -354,6 +354,20 @@ export default function Credencial({ id, nombreReal, nombreFacebook, numeroRegis
             box-shadow: none;
             border-radius: 0;
           }
+          /* Contorno para recortar: línea fina y oscura por DENTRO del borde
+             (no cambia el tamaño de la tarjeta, que sigue en 54 x 85.6 mm).
+             Antes no tenía y el fondo claro se perdía con el papel blanco. */
+          .cred-tarjeta::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border: 2px solid #1f2937; /* 2px = ~0.5mm; Chrome redondea a pixeles enteros */
+            box-sizing: border-box;
+            z-index: 10;
+            pointer-events: none;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
           .cred-estatus {
             font-size: 7px;
           }

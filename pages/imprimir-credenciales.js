@@ -975,6 +975,30 @@ export default function ImprimirCredenciales() {
             page-break-inside: avoid;
             break-inside: avoid;
           }
+          /* Contorno para recortar: una línea fina y oscura por DENTRO del
+             borde de cada tarjeta (frente y reverso). Antes no tenía ninguno
+             y el fondo plateado/crema se confundía con el papel blanco, así
+             que no se veía por dónde cortar. Se dibuja con un elemento
+             encima (::after, sin ocupar espacio) para NO cambiar el tamaño
+             ni el acomodo de las tarjetas: siguen midiendo 54 x 85.6 mm y
+             caben 9 por hoja igual que antes. Como las tarjetas van pegadas,
+             entre dos tarjetas queda una línea doble: se corta por el centro
+             y cada una conserva su propio contorno. */
+          .ic-tarjeta::after,
+          .ic-tarjeta-reverso::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border: 2px solid #1f2937; /* 2px = ~0.5mm; Chrome redondea a pixeles enteros */
+            box-sizing: border-box;
+            z-index: 10;
+            pointer-events: none;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .ic-tarjeta-reverso {
+            position: relative;
+          }
         }
       `}</style>
     </div>
