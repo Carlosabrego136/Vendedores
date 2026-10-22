@@ -32,11 +32,20 @@ export async function getServerSideProps({ params }) {
   const { id } = params;
   // Solo las columnas que usa la credencial: antes traía todo (incluida la
   // foto de la INE, que aquí no se usa) y cargaba la base de datos de más.
-  const { rows } = await query(
-    `SELECT nombre, facebook, numero_registro, fecha_vencimiento, foto_credencial
-     FROM vendedores WHERE id = $1`,
-    [id]
-  );
+  let rows;
+  try {
+    ({ rows } = await query(
+      `SELECT nombre, facebook, numero_registro, fecha_vencimiento, foto_credencial
+       FROM vendedores WHERE id = $1`,
+      [id]
+    ));
+  } catch (err) {
+    // Si la base de datos no responde en este momento (por ejemplo, por falta
+    // de conexiones libres), en vez del "500" en negro se muestra un aviso
+    // con un botón para reintentar.
+    console.error(err);
+    return { props: { id, errorConexion: true } };
+  }
   if (rows.length === 0) return { notFound: true };
 
   const v = rows[0];
@@ -55,7 +64,27 @@ export async function getServerSideProps({ params }) {
   };
 }
 
-export default function Credencial({ id, nombreReal, nombreFacebook, numeroRegistro, vigencia, fotoCredencial }) {
+export default function Credencial({ id, nombreReal, nombreFacebook, numeroRegistro, vigencia, fotoCredencial, errorConexion }) {
+  if (errorConexion) {
+    return (
+      <div style={{ maxWidth: 420, margin: '80px auto', padding: '0 20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
+        <Head>
+          <title>Credencial — ENVIOS AYORA</title>
+        </Head>
+        <h1 style={{ fontSize: 20 }}>No se pudo cargar la credencial</h1>
+        <p style={{ color: '#555' }}>
+          El sistema está muy ocupado en este momento. No se perdió nada: intenta de nuevo en unos segundos.
+        </p>
+        <button className="btn" onClick={() => window.location.reload()}>
+          Reintentar
+        </button>
+        <p style={{ marginTop: 16 }}>
+          <Link href="/">← Volver a Vendedores</Link>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="cred-pagina">
       <Head>

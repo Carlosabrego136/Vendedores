@@ -9,10 +9,18 @@ export async function getServerSideProps({ params }) {
   const { id } = params;
 
   // Solo lo que usa esta página (sin las fotos pesadas).
-  const { rows } = await query(
-    'SELECT qr_codigo, numero_registro, facebook, nombre FROM vendedores WHERE id = $1',
-    [id]
-  );
+  let rows;
+  try {
+    ({ rows } = await query(
+      'SELECT qr_codigo, numero_registro, facebook, nombre FROM vendedores WHERE id = $1',
+      [id]
+    ));
+  } catch (err) {
+    // Si la base de datos no responde en este momento, en vez del "500" en
+    // negro se muestra un aviso con un botón para reintentar.
+    console.error(err);
+    return { props: { id, errorConexion: true } };
+  }
 
   if (rows.length === 0) {
     return { notFound: true };
@@ -39,7 +47,27 @@ function formatoNumeroRegistro(n) {
   return String(n).padStart(4, '0');
 }
 
-export default function VerQr({ id, nombreMostrado, qrCodigo, numeroRegistro }) {
+export default function VerQr({ id, nombreMostrado, qrCodigo, numeroRegistro, errorConexion }) {
+  if (errorConexion) {
+    return (
+      <div style={{ maxWidth: 420, margin: '80px auto', padding: '0 20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
+        <Head>
+          <title>QR — ENVIOS AYORA</title>
+        </Head>
+        <h1 style={{ fontSize: 20 }}>No se pudo cargar el QR</h1>
+        <p style={{ color: '#555' }}>
+          El sistema está muy ocupado en este momento. No se perdió nada: intenta de nuevo en unos segundos.
+        </p>
+        <button className="btn" onClick={() => window.location.reload()}>
+          Reintentar
+        </button>
+        <p style={{ marginTop: 16 }}>
+          <Link href="/">← Volver a Vendedores</Link>
+        </p>
+      </div>
+    );
+  }
+
   const numeroFormateado = formatoNumeroRegistro(numeroRegistro);
   return (
     <div className="qr-pagina">
