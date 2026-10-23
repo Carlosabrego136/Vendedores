@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { fetchJsonConReintento } from '../lib/fetch-reintento';
 
 // Fondo de video pedido por la clienta para esta sección — se usa tal cual,
 // sin ninguna capa de opacidad/tinte encima (así lo pidió explícitamente).
@@ -322,6 +323,7 @@ function FormularioVendedor({ inicial, onGuardar, onCancelar, textoBoton, catego
 export default function Vendedores() {
   const [vendedores, setVendedores] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [errorLista, setErrorLista] = useState(false);
   const [mostrarInactivos, setMostrarInactivos] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [mostrarAlta, setMostrarAlta] = useState(false);
@@ -339,15 +341,26 @@ export default function Vendedores() {
 
   async function cargar() {
     setCargando(true);
+    setErrorLista(false);
     const url = `/api/vendedores${mostrarInactivos ? '?incluirInactivos=1' : ''}`;
-    const res = await fetch(url);
-    setVendedores(await res.json());
+    try {
+      const datos = await fetchJsonConReintento(url);
+      if (Array.isArray(datos)) setVendedores(datos);
+      else setErrorLista(true);
+    } catch (err) {
+      // Si el sistema está saturado y tras varios reintentos no respondió,
+      // se avisa con un botón de "Reintentar" (antes se quedaba en
+      // "Cargando..." para siempre).
+      setErrorLista(true);
+    }
     setCargando(false);
   }
 
   async function cargarCategorias() {
-    const res = await fetch('/api/categorias');
-    setCategorias(await res.json());
+    try {
+      const datos = await fetchJsonConReintento('/api/categorias');
+      if (Array.isArray(datos)) setCategorias(datos);
+    } catch (err) {}
   }
 
   function agregarCategoriaLocal(nueva) {
@@ -355,13 +368,17 @@ export default function Vendedores() {
   }
 
   async function cargarPorVencer() {
-    const res = await fetch('/api/vendedores/por-vencer');
-    setPorVencer(await res.json());
+    try {
+      const datos = await fetchJsonConReintento('/api/vendedores/por-vencer');
+      if (Array.isArray(datos)) setPorVencer(datos);
+    } catch (err) {}
   }
 
   async function cargarTotales() {
-    const res = await fetch('/api/vendedores/totales');
-    setTotales(await res.json());
+    try {
+      const datos = await fetchJsonConReintento('/api/vendedores/totales');
+      if (datos && !datos.error) setTotales(datos);
+    } catch (err) {}
   }
 
   useEffect(() => {
@@ -737,6 +754,13 @@ export default function Vendedores() {
 
             {cargando ? (
               <p className="vend-vacio">Cargando...</p>
+            ) : errorLista && vendedores.length === 0 ? (
+              <p className="vend-vacio">
+                El sistema está muy ocupado en este momento y no se pudo traer la lista. No se perdió nada.{' '}
+                <button className="btn secondary" onClick={cargar}>
+                  Reintentar
+                </button>
+              </p>
             ) : vendedoresFiltrados.length === 0 ? (
               <p className="vend-vacio">No hay vendedores para mostrar.</p>
             ) : (

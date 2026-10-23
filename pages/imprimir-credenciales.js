@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { fetchJsonConReintento } from '../lib/fetch-reintento';
 
 // La credencial es tamaño CR80 en vertical (54mm x 85.6mm). En una hoja
 // carta (215.9mm x 279.4mm) caben 3 columnas x 3 filas con ese tamaño, así
@@ -92,14 +93,21 @@ export default function ImprimirCredenciales() {
     setDebugLog((prev) => [...prev.slice(-30), `${hora} ${texto}`]);
   }
 
-  useEffect(() => {
-    async function cargar() {
-      setCargando(true);
-      const res = await fetch('/api/vendedores');
-      setVendedores(await res.json());
-      setCargando(false);
+  const [errorLista, setErrorLista] = useState(false);
+  async function cargarLista() {
+    setCargando(true);
+    setErrorLista(false);
+    try {
+      const datos = await fetchJsonConReintento('/api/vendedores');
+      if (Array.isArray(datos)) setVendedores(datos);
+      else setErrorLista(true);
+    } catch (err) {
+      setErrorLista(true);
     }
-    cargar();
+    setCargando(false);
+  }
+  useEffect(() => {
+    cargarLista();
   }, []);
 
   const vendedoresFiltrados = useMemo(() => {
@@ -185,76 +193,79 @@ export default function ImprimirCredenciales() {
   // y se avisa con un botón de "Reintentar".
   useEffect(() => {
     let cancelado = false;
-    const controlador = new AbortController();
-    const limite = setTimeout(() => controlador.abort(), 20000);
+    const controladores = new Set();
+
+    // Pide un grupo chico de fotos. Si el servidor está saturado y falla, se
+    // reintenta solo (hasta 3 veces, con espera) antes de darse por vencido.
+    async function pedirGrupo(ids) {
+      const esperas = [0, 1500, 3000];
+      for (let intento = 0; intento < esperas.length; intento += 1) {
+        if (esperas[intento] > 0) await new Promise((r) => setTimeout(r, esperas[intento]));
+        if (cancelado) return null;
+        const controlador = new AbortController();
+        controladores.add(controlador);
+        const limite = setTimeout(() => controlador.abort(), 20000);
+        try {
+          const res = await fetch(`/api/vendedores/fotos-credencial?ids=${encodeURIComponent(ids.join(','))}`, {
+            signal: controlador.signal,
+            cache: 'no-store',
+          });
+          agregarLog(`Respuesta: status=${res.status} (intento ${intento + 1})`);
+          if (res.ok) {
+            const filas = await res.json();
+            if (Array.isArray(filas)) return filas;
+          }
+        } catch (err) {
+          agregarLog(`Error en la petición: ${err && err.name ? err.name : err} (intento ${intento + 1})`);
+        } finally {
+          clearTimeout(limite);
+          controladores.delete(controlador);
+        }
+      }
+      return null;
+    }
 
     async function traerFaltantes() {
       const faltantes = tarjetas.filter((v) => v.tiene_foto_credencial && !(v.id in fotos));
-      if (faltantes.length === 0) {
-        agregarLog(`Nada que pedir (faltantes=0) para [${tarjetas.map((v) => v.nombre).join(', ')}]`);
-        return;
-      }
-      const ids = faltantes.map((v) => v.id).join(',');
-      agregarLog(`Pidiendo ${faltantes.length} foto(s): ${faltantes.map((v) => v.nombre).join(', ')}`);
-      let resultados = [];
-      let huboError = false;
-      try {
-        const res = await fetch(`/api/vendedores/fotos-credencial?ids=${encodeURIComponent(ids)}`, {
-          signal: controlador.signal,
-          cache: 'no-store',
-        });
-        agregarLog(`Respuesta: status=${res.status} ok=${res.ok}`);
-        if (res.ok) {
-          const filas = await res.json();
-          resultados = filas.map((f) => [f.id, f.foto_credencial || null]);
-          agregarLog(
-            `Filas recibidas: ${filas.length} — con foto: ${resultados.filter(([, f]) => f).length}, sin foto: ${resultados.filter(([, f]) => !f).length}`
-          );
-        } else {
-          huboError = true;
-        }
-      } catch (err) {
-        huboError = true;
-        resultados = [];
-        agregarLog(`Error en la petición: ${err && err.name ? err.name : err}`);
-      }
-      clearTimeout(limite);
-      if (cancelado) {
-        agregarLog('Esta petición se canceló (cambió la selección antes de terminar).');
-        return;
-      }
-      // Cualquier seleccionado que se haya pedido pero no vino en la
-      // respuesta (por ejemplo, si falló o se cortó la consulta) se marca
-      // como sin foto encontrada, para no dejar el botón de imprimir
-      // trabado — y si fue por un error real (no porque el vendedor
-      // simplemente no tenga foto), se guarda aparte para poder reintentar.
-      const idsRecibidos = new Set(resultados.map(([id]) => id));
-      const nuevosErrores = new Set();
-      faltantes.forEach((v) => {
-        if (!idsRecibidos.has(v.id)) {
-          resultados.push([v.id, null]);
-          if (huboError) nuevosErrores.add(v.id);
-        }
-      });
-      setFotos((prev) => {
-        const siguiente = { ...prev };
-        resultados.forEach(([id, foto]) => {
-          siguiente[id] = foto;
-        });
+      if (faltantes.length === 0) return;
+      // Se limpian los avisos viejos de estas personas: se van a volver a pedir.
+      setErroresCarga((prev) => {
+        if (!faltantes.some((v) => prev.has(v.id))) return prev;
+        const siguiente = new Set(prev);
+        faltantes.forEach((v) => siguiente.delete(v.id));
         return siguiente;
       });
-      if (nuevosErrores.size > 0) {
-        setErroresCarga((prev) => new Set([...prev, ...nuevosErrores]));
+      // De 3 en 3 (antes todo en una sola consulta pesada), una tras otra,
+      // para no saturar la base de datos con muchas conexiones a la vez.
+      const TAMANO_GRUPO = 3;
+      for (let i = 0; i < faltantes.length; i += TAMANO_GRUPO) {
+        if (cancelado) return;
+        const grupo = faltantes.slice(i, i + TAMANO_GRUPO);
+        agregarLog(`Pidiendo ${grupo.length} foto(s): ${grupo.map((v) => v.nombre).join(', ')}`);
+        const filas = await pedirGrupo(grupo.map((v) => v.id));
+        if (cancelado) return;
+        if (filas === null) {
+          // No se pudo traer: NO se marca como "sin foto" (antes sí, y por eso
+          // se imprimía el recuadro en blanco). Se avisa y queda bloqueado
+          // imprimir hasta que se logre traer (botón "Reintentar").
+          setErroresCarga((prev) => new Set([...prev, ...grupo.map((v) => v.id)]));
+          continue;
+        }
+        const recibidos = new Map(filas.map((f) => [f.id, f.foto_credencial || null]));
+        setFotos((prev) => {
+          const siguiente = { ...prev };
+          // Si el servidor contestó bien pero no trae foto, sí es "sin foto".
+          grupo.forEach((v) => {
+            siguiente[v.id] = recibidos.has(v.id) ? recibidos.get(v.id) : null;
+          });
+          return siguiente;
+        });
       }
-      agregarLog(
-        `Guardado en memoria: ${resultados.length} registro(s) — ahora toca esperar a que cada <img> termine de cargar en pantalla.`
-      );
     }
     traerFaltantes();
     return () => {
       cancelado = true;
-      clearTimeout(limite);
-      controlador.abort();
+      controladores.forEach((c) => c.abort());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tarjetas, intentoFotos]);
@@ -263,13 +274,6 @@ export default function ImprimirCredenciales() {
   // cargaron bien ni la selección actual).
   function reintentarFotosFallidas() {
     if (erroresCarga.size === 0) return;
-    setFotos((prev) => {
-      const siguiente = { ...prev };
-      erroresCarga.forEach((id) => {
-        delete siguiente[id];
-      });
-      return siguiente;
-    });
     setErroresCarga(new Set());
     setIntentoFotos((n) => n + 1);
   }
@@ -314,7 +318,7 @@ export default function ImprimirCredenciales() {
   }
 
   function imprimirFrentes() {
-    if (!todasCargadas) {
+    if (!todasCargadas || erroresVisibles.length > 0) {
       alert('Espera un momento a que terminen de cargar todas las fotos antes de imprimir.');
       return;
     }
@@ -323,7 +327,7 @@ export default function ImprimirCredenciales() {
   }
 
   function imprimirReversos() {
-    if (!todasCargadasQr) {
+    if (!todasCargadasQr || erroresVisiblesQr.length > 0) {
       alert('Espera un momento a que terminen de cargar todos los códigos QR antes de imprimir.');
       return;
     }
@@ -366,7 +370,7 @@ export default function ImprimirCredenciales() {
           Quitar selección
         </button>
 
-        <button className="btn" onClick={imprimirFrentes} disabled={tarjetas.length === 0 || !todasCargadas}>
+        <button className="btn" onClick={imprimirFrentes} disabled={tarjetas.length === 0 || !todasCargadas || erroresVisibles.length > 0}>
           {tarjetas.length === 0
             ? 'Imprimir frentes'
             : todasCargadas
@@ -376,7 +380,7 @@ export default function ImprimirCredenciales() {
         <button
           className="btn secondary"
           onClick={imprimirReversos}
-          disabled={tarjetas.length === 0 || !todasCargadasQr}
+          disabled={tarjetas.length === 0 || !todasCargadasQr || erroresVisiblesQr.length > 0}
         >
           {tarjetas.length === 0
             ? 'Imprimir reversos (QR)'
@@ -436,6 +440,13 @@ export default function ImprimirCredenciales() {
       <div className="ic-cuerpo no-imprimir">
         {cargando ? (
           <p className="ic-vacio">Cargando...</p>
+        ) : errorLista && vendedores.length === 0 ? (
+          <p className="ic-vacio">
+            El sistema está muy ocupado en este momento y no se pudo traer la lista. No se perdió nada.{' '}
+            <button className="btn secondary ic-btn-reintentar" onClick={cargarLista}>
+              Reintentar
+            </button>
+          </p>
         ) : vendedoresFiltrados.length === 0 ? (
           <p className="ic-vacio">No hay vendedores que coincidan con la búsqueda.</p>
         ) : (

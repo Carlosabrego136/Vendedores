@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { fetchJsonConReintento } from '../lib/fetch-reintento';
 
 // Cuántas tarjetas caben en una hoja carta en tamaño credencial (3 columnas
 // x 3 filas, igual que en "Imprimir varias credenciales" — la tarjeta de QR
@@ -77,14 +78,21 @@ export default function ImprimirQr() {
   // no se ha intentado.
   const [qrDatos, setQrDatos] = useState({});
 
-  useEffect(() => {
-    async function cargar() {
-      setCargando(true);
-      const res = await fetch('/api/vendedores');
-      setVendedores(await res.json());
-      setCargando(false);
+  const [errorLista, setErrorLista] = useState(false);
+  async function cargarLista() {
+    setCargando(true);
+    setErrorLista(false);
+    try {
+      const datos = await fetchJsonConReintento('/api/vendedores');
+      if (Array.isArray(datos)) setVendedores(datos);
+      else setErrorLista(true);
+    } catch (err) {
+      setErrorLista(true);
     }
-    cargar();
+    setCargando(false);
+  }
+  useEffect(() => {
+    cargarLista();
   }, []);
 
   const vendedoresFiltrados = useMemo(() => {
@@ -114,7 +122,7 @@ export default function ImprimirQr() {
       const controlador = new AbortController();
       const limite = setTimeout(() => controlador.abort(), 20000);
       try {
-        const res = await fetch(`/api/qr/${v.id}`, { signal: controlador.signal, cache: 'no-store' });
+        const res = await fetch(`/api/qr/${v.id}`, { signal: controlador.signal });
         if (!res.ok) throw new Error('Respuesta no exitosa del servidor');
         const blob = await res.blob();
         const dataUrl = await blobADataUrl(blob);
@@ -282,6 +290,13 @@ export default function ImprimirQr() {
       <div className="iq-cuerpo no-imprimir">
         {cargando ? (
           <p className="iq-vacio">Cargando...</p>
+        ) : errorLista && vendedores.length === 0 ? (
+          <p className="iq-vacio">
+            El sistema está muy ocupado en este momento y no se pudo traer la lista. No se perdió nada.{' '}
+            <button className="btn secondary" onClick={cargarLista}>
+              Reintentar
+            </button>
+          </p>
         ) : vendedoresFiltrados.length === 0 ? (
           <p className="iq-vacio">No hay vendedores que coincidan con la búsqueda.</p>
         ) : (
