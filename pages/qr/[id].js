@@ -94,7 +94,7 @@ export default function VerQr({ id, nombreMostrado, qrCodigo, numeroRegistro, er
         <p className="qr-etiqueta">Vendedor</p>
         <h1 className="qr-nombre">{nombreMostrado}</h1>
         {numeroFormateado && <p className="qr-numero-registro">No. de registro: {numeroFormateado}</p>}
-        <img src={`/api/qr/${id}`} alt={`Código QR de ${nombreMostrado}`} className="qr-imagen" />
+        <img src={`/api/qrimg/${encodeURIComponent(qrCodigo)}`} alt={`Código QR de ${nombreMostrado}`} className="qr-imagen" />
         <p className="qr-codigo">{qrCodigo}</p>
       </div>
 

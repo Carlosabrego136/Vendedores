@@ -262,9 +262,14 @@ export default function ImprimirCredenciales() {
         });
       }
     }
-    traerFaltantes();
+    // Se espera un momento (0.6 s) antes de pedir las fotos: al ir marcando
+    // varias credenciales una tras otra, cada clic reiniciaba la petición y se
+    // apilaban muchas a la vez. Así solo se pide cuando ya terminó de
+    // seleccionar (o hizo una pausa).
+    const espera = setTimeout(traerFaltantes, 600);
     return () => {
       cancelado = true;
+      clearTimeout(espera);
       controladores.forEach((c) => c.abort());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -540,7 +545,7 @@ export default function ImprimirCredenciales() {
                   <h1 className="ic-reverso-nombre">{nombreMostrado}</h1>
                   {numero && <p className="ic-reverso-numero">No. de registro: {numero}</p>}
                   <img
-                    src={`/api/qr/${v.id}${intentoQr > 0 ? `?r=${intentoQr}` : ''}`}
+                    src={`/api/qrimg/${encodeURIComponent(v.qr_codigo)}${intentoQr > 0 ? `?r=${intentoQr}` : ''}`}
                     alt={`Código QR de ${nombreMostrado}`}
                     className="ic-reverso-imagen"
                     onLoad={() => {

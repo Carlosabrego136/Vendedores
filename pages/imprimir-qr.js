@@ -122,7 +122,7 @@ export default function ImprimirQr() {
       const controlador = new AbortController();
       const limite = setTimeout(() => controlador.abort(), 20000);
       try {
-        const res = await fetch(`/api/qr/${v.id}`, { signal: controlador.signal });
+        const res = await fetch(`/api/qrimg/${encodeURIComponent(v.qr_codigo)}`, { signal: controlador.signal });
         if (!res.ok) throw new Error('Respuesta no exitosa del servidor');
         const blob = await res.blob();
         const dataUrl = await blobADataUrl(blob);
